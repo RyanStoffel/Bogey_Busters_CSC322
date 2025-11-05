@@ -19,7 +19,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final _formKey = GlobalKey<FormState>();
   final TextEditingController firstNameController = TextEditingController();
   final TextEditingController lastNameController = TextEditingController();
-  final TextEditingController usernameController = TextEditingController();
+  final TextEditingController displayNameController = TextEditingController();
   final TextEditingController ageController = TextEditingController();
   final AuthService _authService = AuthService();
   final ImagePicker _picker = ImagePicker();
@@ -31,7 +31,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   void dispose() {
     firstNameController.dispose();
     lastNameController.dispose();
-    usernameController.dispose();
+    displayNameController.dispose();
     ageController.dispose();
     super.dispose();
   }
@@ -151,7 +151,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       await _authService.updateUserDocument({
         'firstName': firstNameController.text.trim(),
         'lastName': lastNameController.text.trim(),
-        'username': usernameController.text.trim(),
+        'displayName': displayNameController.text.trim(),
         'gender': selectedGender,
         'age': int.parse(ageController.text.trim()),
         'profilePictureUrl': profilePictureUrl,
@@ -222,9 +222,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 ),
                 const SizedBox(height: 16),
                 TextFormField(
-                  controller: usernameController,
+                  controller: displayNameController,
                   decoration: InputDecoration(
-                    labelText: 'Username',
+                    labelText: 'displayName',
                     prefixIcon: const Icon(Icons.alternate_email),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -232,10 +232,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   ),
                   validator: (value) {
                     if (value == null || value.trim().isEmpty) {
-                      return 'Please enter a username';
+                      return 'Please enter a display name';
                     }
                     if (value.length < 3) {
-                      return 'Username must be at least 3 characters';
+                      return 'displayName must be at least 3 characters';
                     }
                     return null;
                   },

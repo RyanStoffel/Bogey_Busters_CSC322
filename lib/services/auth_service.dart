@@ -2,27 +2,26 @@ import 'dart:io';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
-import 'package:google_sign_in/google_sign_in.dart';
-import 'package:flutter/foundation.dart'
-    show defaultTargetPlatform, TargetPlatform;
-import '../firebase_options.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  static const String _isLoggedInKey = 'isLoggedIn';
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseStorage _storage = FirebaseStorage.instance;
-  final GoogleSignIn _googleSignIn = GoogleSignIn(
-    // Configure client ID for iOS/macOS (Android uses default from google-services.json)
-    clientId:
-        (defaultTargetPlatform == TargetPlatform.iOS ||
-            defaultTargetPlatform == TargetPlatform.macOS)
-        ? DefaultFirebaseOptions.ios.iosClientId
-        : null,
-    scopes: ['email', 'profile'],
-  );
 
   // Get current user
   User? get currentUser => _auth.currentUser;
+
+  Future<bool> isUserLoggedIn() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_isLoggedInKey) ?? false;
+  }
+
+  Future<void> setLoggedIn(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_isLoggedInKey, value);
+  }
 
   // Stream of auth state changes
   Stream<User?> get authStateChanges => _auth.authStateChanges();
@@ -37,6 +36,7 @@ class AuthService {
         email: email,
         password: password,
       );
+      await setLoggedIn(true);
       return result.user;
     } on FirebaseAuthException catch (e) {
       throw _handleAuthException(e);
@@ -59,64 +59,10 @@ class AuthService {
     }
   }
 
-  // Sign in with Google
-  Future<User?> signInWithGoogle() async {
-    try {
-      // Trigger the Google Sign-In flow
-      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
-
-      if (googleUser == null) {
-        // User canceled the sign-in
-        return null;
-      }
-
-      // Obtain the auth details from the request
-      final GoogleSignInAuthentication googleAuth =
-          await googleUser.authentication;
-
-      // Check if tokens are available
-      if (googleAuth.idToken == null && googleAuth.accessToken == null) {
-        throw 'Failed to obtain Google authentication tokens. Please try again.';
-      }
-
-      // Create a new credential
-      final credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
-      );
-
-      // Sign in to Firebase with the Google credential
-      final UserCredential result = await _auth.signInWithCredential(
-        credential,
-      );
-      return result.user;
-    } on FirebaseAuthException catch (e) {
-      // Handle account-exists-with-different-credential error
-      if (e.code == 'account-exists-with-different-credential') {
-        // Get the list of sign-in methods for the email
-        final email = e.email;
-        if (email != null) {
-          final providers = await _auth.fetchSignInMethodsForEmail(email);
-          throw 'An account already exists with email $email. Please sign in using ${providers.first} first, then you can link your Google account.';
-        } else {
-          throw 'An account already exists with this email address using a different sign-in method.';
-        }
-      }
-      throw _handleAuthException(e);
-    } catch (e) {
-      // Handle specific Google Sign-In errors
-      final errorMessage = e.toString().toLowerCase();
-      if (errorMessage.contains('sign_in_canceled') ||
-          errorMessage.contains('sign_in_cancelled')) {
-        return null; // User canceled - don't throw error
-      }
-      throw 'An error occurred during Google sign-in: ${e.toString()}';
-    }
-  }
-
   // Sign out
   Future<void> signOut() async {
-    await Future.wait([_auth.signOut(), _googleSignIn.signOut()]);
+    await Future.wait([_auth.signOut()]);
+    await setLoggedIn(false);
   }
 
   // Send password reset email
@@ -159,8 +105,9 @@ class AuthService {
       // Only create if document doesn't exist
       if (!documentExists) {
         final userEmail = currentUser.email ?? user.email ?? '';
-        final isAdmin = userEmail == 'ryanstoffel44@gmail.com';
-        
+        // Remove hard-coded admin special-case. Default new users to non-admin.
+        final isAdmin = false;
+
         await docRef.set({
           'uid': currentUser.uid,
           'email': userEmail,
@@ -172,11 +119,8 @@ class AuthService {
           'isAdmin': isAdmin,
         });
       } else {
-        // If document exists, ensure admin status is set for the specified email
-        final userEmail = currentUser.email ?? user.email ?? '';
-        if (userEmail == 'ryanstoffel44@gmail.com') {
-          await docRef.update({'isAdmin': true});
-        }
+        // If document exists, do not automatically change admin status here.
+        // Admins should be managed explicitly elsewhere (Firestore console or admin APIs).
       }
     } catch (e) {
       throw 'Failed to create user document: ${e.toString()}';
@@ -264,47 +208,9 @@ class AuthService {
     }
   }
 
-  // Link Google account to current user
-  Future<User?> linkGoogleAccount() async {
-    try {
-      final currentUser = _auth.currentUser;
-      if (currentUser == null) {
-        throw 'No user is currently signed in. Please sign in first.';
-      }
-
-      // Trigger the Google Sign-In flow
-      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
-
-      if (googleUser == null) {
-        // User canceled the sign-in
-        return null;
-      }
-
-      // Obtain the auth details from the request
-      final GoogleSignInAuthentication googleAuth =
-          await googleUser.authentication;
-
-      // Create a new credential
-      final credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
-      );
-
-      // Link the credential to the current user
-      final UserCredential result = await currentUser.linkWithCredential(
-        credential,
-      );
-      return result.user;
-    } on FirebaseAuthException catch (e) {
-      throw _handleAuthException(e);
-    } catch (e) {
-      final errorMessage = e.toString().toLowerCase();
-      if (errorMessage.contains('sign_in_canceled') ||
-          errorMessage.contains('sign_in_cancelled')) {
-        return null; // User canceled - don't throw error
-      }
-      throw 'An error occurred while linking Google account: ${e.toString()}';
-    }
+  // Get current user
+  User? getCurrentUser() {
+    return _auth.currentUser;
   }
 
   // Handle Firebase Auth exceptions and return user-friendly messages

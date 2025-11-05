@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:golf_tracker_app/services/auth_service.dart';
 import 'package:golf_tracker_app/services/firestorage_service.dart';
 import 'profile_screen.dart';
 
@@ -14,6 +15,7 @@ class _HomeScreenState extends State<HomeScreen> {
   //////////////////////////
   /// Instance Variables ///
   //////////////////////////
+  final AuthService _auth = AuthService();
 
   ///////////////////////
   /// Flutter Methods ///
@@ -107,6 +109,11 @@ class _HomeScreenState extends State<HomeScreen> {
               title: Text('Home'),
               onTap: () => Navigator.of(context).pop(),
             ),
+            ListTile(
+              leading: Icon(Icons.logout),
+              title: Text('Sign out'),
+              onTap: _auth.signOut,
+            )
           ],
         ),
       ),

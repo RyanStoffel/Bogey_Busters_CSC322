@@ -1,8 +1,5 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
-import 'verify_email_screen.dart';
-import 'home_screen.dart';
-import 'onboarding_screen.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
@@ -73,17 +70,15 @@ class _AuthScreenState extends State<AuthScreen> {
         await _authService.reloadUser();
         await _authService.createUserDocument(user);
         await _authService.sendEmailVerification();
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (context) => VerifyEmailScreen(email: email),
-          ),
-        );
+        
+        _showMessage('Account created! Please check your email for verification.');
       }
     } catch (e) {
       _showMessage(e.toString(), isError: true);
     } finally {
-      setState(() => isLoading = false);
+      if (mounted) {
+        setState(() => isLoading = false);
+      }
     }
   }
 
@@ -103,33 +98,15 @@ class _AuthScreenState extends State<AuthScreen> {
 
       if (user != null) {
         await _authService.reloadUser();
-        final currentUser = _authService.currentUser;
-
-        if (currentUser != null && !currentUser.emailVerified) {
-          _showMessage(
-            'Please verify your email before logging in. Check your inbox for the verification link.',
-            isError: true,
-          );
-          await _authService.signOut();
-        } else {
-          // Check if user has completed onboarding
-          final hasCompletedOnboarding = await _authService
-              .hasCompletedOnboarding();
-
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(
-              builder: (context) => hasCompletedOnboarding
-                  ? const HomeScreen()
-                  : const OnboardingScreen(),
-            ),
-          );
-        }
+        // Don't navigate - AuthGate will handle it automatically
+        // The StreamBuilder will check email verification and onboarding status
       }
     } catch (e) {
       _showMessage(e.toString(), isError: true);
     } finally {
-      setState(() => isLoading = false);
+      if (mounted) {
+        setState(() => isLoading = false);
+      }
     }
   }
 
@@ -159,11 +136,12 @@ class _AuthScreenState extends State<AuthScreen> {
             ElevatedButton(
               onPressed: () =>
                   Navigator.pop(context, dialogEmailController.text.trim()),
-              child: Text('Send Reset Link'),
+              
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.green,
                 foregroundColor: Colors.white,
               ),
+              child: Text('Send Reset Link'),
             ),
           ],
         ),
