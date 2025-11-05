@@ -224,7 +224,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 TextFormField(
                   controller: displayNameController,
                   decoration: InputDecoration(
-                    labelText: 'displayName',
+                    labelText: 'Display Name',
                     prefixIcon: const Icon(Icons.alternate_email),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),

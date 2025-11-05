@@ -1,9 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import '../services/auth_service.dart';
-import 'auth_screen.dart';
-import 'home_screen.dart';
-import 'onboarding_screen.dart';
+import '../main.dart'; // Import to access AuthGate
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -13,39 +10,23 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen> {
-  final AuthService _authService = AuthService();
-
   @override
   void initState() {
     super.initState();
-    _checkAuthAndNavigate();
+    _navigateToAuthGate();
   }
 
-  Future<void> _checkAuthAndNavigate() async {
-    await Future.delayed(Duration(seconds: 2));
-
-    if (!mounted) return;
-
-    final user = _authService.currentUser;
+  Future<void> _navigateToAuthGate() async {
+    // Show splash screen for 2 seconds
+    await Future.delayed(Duration(seconds: 1));
     
-    if (user != null) {
-      // Check if user has completed onboarding
-      final hasCompletedOnboarding = await _authService.hasCompletedOnboarding();
-      
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (context) => hasCompletedOnboarding 
-            ? const HomeScreen() 
-            : const OnboardingScreen(),
-        ),
-      );
-    } else {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const AuthScreen()),
-      );
-    }
+    if (!mounted) return;
+    
+    // Navigate to AuthGate which handles all the routing logic
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (context) => const AuthGate()),
+    );
   }
 
   @override
@@ -80,4 +61,3 @@ class _SplashScreenState extends State<SplashScreen> {
     );
   }
 }
-
