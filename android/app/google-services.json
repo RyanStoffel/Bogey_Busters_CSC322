@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "862513656053",
+    "project_id": "golf-tracker-app-final-csc322",
+    "storage_bucket": "golf-tracker-app-final-csc322.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:862513656053:android:f1855021e66d1e6e8395bc",
+        "android_client_info": {
+          "package_name": "com.example.golf_tracker_app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "862513656053-gi8g35lsf8ihg66fpakekkcebft9v4dj.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyALjZZeYMI2boqATYID6PUhJiPTLwmbINs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "862513656053-gi8g35lsf8ihg66fpakekkcebft9v4dj.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,0 +1,44 @@
+{
+  "firestore": {
+    "rules": "firestore.rules"
+  },
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "golf-tracker-app-final-csc322",
+          "appId": "1:862513656053:android:f1855021e66d1e6e8395bc",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "ios": {
+        "default": {
+          "projectId": "golf-tracker-app-final-csc322",
+          "appId": "1:862513656053:ios:b62e602a7f79fad68395bc",
+          "uploadDebugSymbols": false,
+          "fileOutput": "ios/Runner/GoogleService-Info.plist"
+        }
+      },
+      "macos": {
+        "default": {
+          "projectId": "golf-tracker-app-final-csc322",
+          "appId": "1:862513656053:ios:b62e602a7f79fad68395bc",
+          "uploadDebugSymbols": false,
+          "fileOutput": "macos/Runner/GoogleService-Info.plist"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "golf-tracker-app-final-csc322",
+          "configurations": {
+            "android": "1:862513656053:android:f1855021e66d1e6e8395bc",
+            "ios": "1:862513656053:ios:b62e602a7f79fad68395bc",
+            "macos": "1:862513656053:ios:b62e602a7f79fad68395bc",
+            "web": "1:862513656053:web:1b4cd767a93992c58395bc",
+            "windows": "1:862513656053:web:5cb3cf067cd9ed948395bc"
+          }
+        }
+      }
+    }
+  }
+}
