@@ -134,39 +134,6 @@ class _AuthScreenState extends State<AuthScreen> {
     }
   }
 
-  Future<void> signInWithGoogle() async {
-    setState(() => isLoading = true);
-
-    try {
-      final user = await _authService.signInWithGoogle();
-      if (user != null) {
-        // Create user document if it doesn't exist
-        await _authService.createUserDocument(user);
-
-        // Check if user has completed onboarding
-        final hasCompletedOnboarding = await _authService
-            .hasCompletedOnboarding();
-
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (context) => hasCompletedOnboarding
-                ? const HomeScreen()
-                : const OnboardingScreen(),
-          ),
-        );
-      }
-    } catch (e) {
-      final errorMessage = e.toString().toLowerCase();
-      if (!errorMessage.contains('canceled') &&
-          !errorMessage.contains('cancelled')) {
-        _showMessage('Google Sign-In failed: ${e.toString()}', isError: true);
-      }
-    } finally {
-      setState(() => isLoading = false);
-    }
-  }
-
   Future<void> navigateToForgotPasswordPage() async {
     final email = emailController.text.trim();
 
@@ -390,44 +357,6 @@ class _AuthScreenState extends State<AuthScreen> {
                             isLoginScreen ? 'Login' : 'Sign Up',
                             style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                           ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(child: Divider()),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                      child: Text('OR', style: TextStyle(color: Colors.grey[700])),
-                    ),
-                    Expanded(child: Divider()),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: OutlinedButton.icon(
-                    onPressed: isLoading ? null : signInWithGoogle,
-                    icon: SvgPicture.network(
-                      'https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg',
-                      width: 20,
-                      height: 20,
-                    ),
-                    label: Text(
-                      'Sign in with Google',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w500,
-                        color: Colors.black87,
-                      ),
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: Colors.black87,
-                      side: BorderSide(color: Colors.grey[300]!, width: 1),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    ),
                   ),
                 ),
                 const SizedBox(height: 16),
