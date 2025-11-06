@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import '../main.dart'; // Import to access AuthGate
+import 'package:go_router/go_router.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -13,20 +14,21 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
-    _navigateToAuthGate();
+    _navigateToNextScreen();
   }
 
-  Future<void> _navigateToAuthGate() async {
-    // Show splash screen for 2 seconds
-    await Future.delayed(Duration(seconds: 1));
+  Future<void> _navigateToNextScreen() async {
+    await Future.delayed(const Duration(seconds: 2));
     
     if (!mounted) return;
+
+    final user = FirebaseAuth.instance.currentUser;
     
-    // Navigate to AuthGate which handles all the routing logic
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (context) => const AuthGate()),
-    );
+    if (user != null) {
+      context.go('/home');
+    } else {
+      context.go('/login');
+    }
   }
 
   @override
@@ -37,13 +39,13 @@ class _SplashScreenState extends State<SplashScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
+            const Icon(
               Icons.golf_course_rounded,
               size: 120,
               color: Colors.green,
             ),
             const SizedBox(height: 24),
-            Text(
+            const Text(
               'Bogey Busters',
               style: TextStyle(
                 fontSize: 36,
@@ -52,7 +54,7 @@ class _SplashScreenState extends State<SplashScreen> {
               ),
             ),
             const SizedBox(height: 48),
-            CircularProgressIndicator(
+            const CircularProgressIndicator(
               color: Colors.green,
             ),
           ],
