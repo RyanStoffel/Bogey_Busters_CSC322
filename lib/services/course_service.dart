@@ -38,6 +38,7 @@ class CourseService {
           'holes': totalHoles,
           'par': data['totalPar'] ?? data['par'] ?? 72,
           'distance': data['distance'] ?? 'Unknown distance',
+          'totalYards': data['totalYards']?.toString() ?? data['distance'] ?? 'Unknown distance',
           'hasCarts': data['hasCarts'] ?? false,
           'imageUrl': imageUrl ?? '',
         });
@@ -81,6 +82,7 @@ class CourseService {
           'holes': totalHoles,
           'par': data['totalPar'] ?? data['par'] ?? 72,
           'distance': data['distance'] ?? 'Unknown distance',
+          'totalYards': data['totalYards']?.toString() ?? data['distance'] ?? 'Unknown distance',
           'hasCarts': data['hasCarts'] ?? false,
           'imageUrl': imageUrl ?? '',
         });

@@ -1,5 +1,3 @@
-import 'dart:ui';
-
 import 'package:go_router/go_router.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:golf_tracker_app/screens/auth_screen.dart';
@@ -52,10 +50,12 @@ final GoRouter screenRouter = GoRouter(
           currentIndex = 0;
         } else if (location.startsWith('/courses')) {
           currentIndex = 1;
-        } else if (location.startsWith('/play')) {
+        } else if (location.startsWith('/home')) {
           currentIndex = 2;
-        } else if (location.startsWith('/profile')) {
+        } else if (location.startsWith('/play')) {
           currentIndex = 3;
+        } else if (location.startsWith('/profile')) {
+          currentIndex = 4;
         }
 
         return ShellScreen(
@@ -79,7 +79,7 @@ final GoRouter screenRouter = GoRouter(
         GoRoute(
           path: '/courses',
           pageBuilder: (context, state) => NoTransitionPage(
-            child: const CoursesScreen(),
+            child: CoursesScreen(),
           ),
         ),
         GoRoute(
