@@ -1,8 +1,8 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/auth_service.dart';
-import 'home_screen.dart';
 
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key});
@@ -158,10 +158,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         'onboardingCompleted': true,
       });
 
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const HomeScreen()),
-      );
+      if (!mounted) return;
+      context.go('/home');
     } catch (e) {
       _showMessage('Failed to complete onboarding: ${e.toString()}', isError: true);
     } finally {
@@ -225,7 +223,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   controller: displayNameController,
                   decoration: InputDecoration(
                     labelText: 'Display Name',
-                    prefixIcon: const Icon(Icons.alternate_email),
+                    prefixIcon: const Icon(Icons.person),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),

@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import '../services/auth_service.dart';
-import 'onboarding_screen.dart';
 
 class VerifyEmailScreen extends StatefulWidget {
   final String email;
@@ -70,10 +70,7 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
         
         if (!mounted) return;
         
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const OnboardingScreen()),
-        );
+        context.go('/onboarding');
       } else {
         if (mounted) {
           setState(() => isChecking = false);
@@ -258,7 +255,7 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
         ],
         const SizedBox(height: 24),
         TextButton(
-          onPressed: () => Navigator.pop(context),
+          onPressed: () => context.go('/auth'),
           child: Text(
             'Back to Login',
             style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
@@ -296,10 +293,7 @@ class _VerifyEmailScreenState extends State<VerifyEmailScreen> {
           width: double.infinity,
           height: 50,
           child: ElevatedButton(
-            onPressed: () => Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (context) => const OnboardingScreen()),
-            ),
+            onPressed: () => context.go('/onboarding'),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.green,
               foregroundColor: Colors.white,

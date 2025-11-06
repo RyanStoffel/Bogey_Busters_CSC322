@@ -66,7 +66,7 @@ class CourseCard extends StatelessWidget {
               children: [
                 Text(courseName, style: _textStyle(18, FontWeight.w700)),
                 const SizedBox(height: 4),
-                Text(distance!, style: _textStyle(14, FontWeight.w400)),
+                Text('$distance yards', style: _textStyle(14, FontWeight.w400)),
               ],
             )
           : type == CourseCardType.friendCourseScoreCard

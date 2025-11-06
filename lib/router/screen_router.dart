@@ -1,6 +1,9 @@
+import 'package:flutter/foundation.dart';
 import 'package:go_router/go_router.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:golf_tracker_app/screens/auth_screen.dart';
+import 'package:golf_tracker_app/screens/edit_profile_screen.dart';
 import 'package:golf_tracker_app/screens/splash_screen.dart';
 import 'package:golf_tracker_app/screens/home_screen.dart';
 import 'package:golf_tracker_app/screens/friends_screen.dart';
@@ -8,22 +11,94 @@ import 'package:golf_tracker_app/screens/courses_screen.dart';
 import 'package:golf_tracker_app/screens/play_screen.dart';
 import 'package:golf_tracker_app/screens/profile_screen.dart';
 import 'package:golf_tracker_app/screens/shell_screen.dart';
+import 'package:golf_tracker_app/screens/verify_email_screen.dart';
+import 'package:golf_tracker_app/screens/onboarding_screen.dart';
+
+class AuthNotifier extends ChangeNotifier {
+  AuthNotifier() {
+    FirebaseAuth.instance.authStateChanges().listen((User? user) {
+      notifyListeners();
+    });
+  }
+}
+
+final _authNotifier = AuthNotifier();
 
 final GoRouter screenRouter = GoRouter(
   initialLocation: '/',
-  redirect: (context, state) {
+  refreshListenable: _authNotifier,
+  redirect: (context, state) async {
     final user = FirebaseAuth.instance.currentUser;
     final isOnSplashScreen = state.uri.path == '/';
     final isOnAuthScreen = state.uri.path == '/auth';
+    final isOnVerifyEmail = state.uri.path == '/verify-email';
+    final isOnOnboarding = state.uri.path == '/onboarding';
     
     if (isOnSplashScreen) return null;
     
+    // No user - redirect to auth
     if (user == null && !isOnAuthScreen) {
       return '/auth';
     }
     
-    if (user != null && isOnAuthScreen) {
-      return '/home';
+    // User exists - check verification and onboarding status
+    if (user != null) {
+      // If on auth screen and logged in, need to check verification
+      if (isOnAuthScreen) {
+        if (!user.emailVerified) {
+          return '/verify-email';
+        }
+        
+        // Check onboarding status
+        try {
+          final doc = await FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .get();
+          
+          if (doc.exists) {
+            final data = doc.data();
+            final onboardingCompleted = data?['onboardingCompleted'] ?? false;
+            
+            if (!onboardingCompleted) {
+              return '/onboarding';
+            }
+          }
+        } catch (e) {
+          // If we can't check, assume they need onboarding
+          return '/onboarding';
+        }
+        
+        return '/home';
+      }
+      
+      // If not verified and not on verify-email page
+      if (!user.emailVerified && !isOnVerifyEmail) {
+        return '/verify-email';
+      }
+      
+      // If verified but not on onboarding page, check if onboarding is needed
+      if (user.emailVerified && !isOnOnboarding) {
+        try {
+          final doc = await FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .get();
+          
+          if (doc.exists) {
+            final data = doc.data();
+            final onboardingCompleted = data?['onboardingCompleted'] ?? false;
+            
+            if (!onboardingCompleted) {
+              return '/onboarding';
+            }
+          } else {
+            return '/onboarding';
+          }
+        } catch (e) {
+          return '/onboarding';
+        }
+      }
     }
     
     return null;
@@ -39,6 +114,21 @@ final GoRouter screenRouter = GoRouter(
       path: '/auth',
       pageBuilder: (context, state) => NoTransitionPage(
         child: const AuthScreen(),
+      ),
+    ),
+    GoRoute(
+      path: '/verify-email',
+      pageBuilder: (context, state) {
+        final user = FirebaseAuth.instance.currentUser;
+        return NoTransitionPage(
+          child: VerifyEmailScreen(email: user?.email ?? ''),
+        );
+      },
+    ),
+    GoRoute(
+      path: '/onboarding',
+      pageBuilder: (context, state) => NoTransitionPage(
+        child: const OnboardingScreen(),
       ),
     ),
     ShellRoute(
@@ -92,6 +182,12 @@ final GoRouter screenRouter = GoRouter(
           path: '/profile',
           pageBuilder: (context, state) => NoTransitionPage(
             child: const ProfileScreen(),
+          ),
+        ),
+        GoRoute(
+          path: '/edit-profile',
+          pageBuilder: (context, state) => NoTransitionPage(
+            child: const EditProfileScreen(),
           ),
         ),
       ],

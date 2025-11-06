@@ -22,7 +22,7 @@ class _AuthScreenState extends State<AuthScreen> {
   final AuthService _authService = AuthService();
   final _formKey = GlobalKey<FormState>();
 
-  bool isLoginScreen = true;
+  bool isLoginScreen = false;
   bool showPasswordText = false;
   bool isLoading = false;
 
