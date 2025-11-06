@@ -237,7 +237,7 @@ class AuthService {
       case 'provider-already-linked':
         return 'This Google account is already linked to your account.';
       case 'invalid-credential':
-        return 'The Google credential is not valid. Please try again.';
+        return 'The credential is not valid. Please try again.';
       default:
         return 'An error occurred: ${e.message ?? e.code}';
     }

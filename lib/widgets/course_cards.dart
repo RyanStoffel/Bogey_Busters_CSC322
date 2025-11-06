@@ -14,8 +14,8 @@ class CourseCard extends StatelessWidget {
   final int? relativeToPar;
   final String? friendName;
   final bool? hasCarts;
-  final Course? course; // For play button navigation
-  final VoidCallback? onPlay; // Callback when Play button is pressed
+  final Course? course;
+  final VoidCallback? onPlay;
   final String? imageUrl;
 
   const CourseCard({
