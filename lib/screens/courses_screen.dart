@@ -24,7 +24,6 @@ class CoursesScreen extends StatelessWidget {
           if (courses.isEmpty) {
             return const Center(child: Text('No courses found'));
           }
-
           return ListView.builder(
             padding: const EdgeInsets.all(16),
             itemCount: courses.length,
@@ -34,11 +33,15 @@ class CoursesScreen extends StatelessWidget {
                 type: CourseCardType.courseCard,
                 courseName: course['name'] ?? 'Unknown',
                 courseImage: 'assets/images/default.png',
-                imageUrl: (course['imageUrl'] as String?)?.isNotEmpty == true ? course['imageUrl'] as String : null,
+                imageUrl: (course['imageUrl'] as String?)?.isNotEmpty == true 
+                    ? course['imageUrl'] as String 
+                    : null,
                 holes: course['holes'] as int? ?? 18,
                 par: course['par'] as int? ?? 72,
                 distance: course['totalYards'] as String? ?? 'Unknown distance',
                 hasCarts: course['hasCarts'] as bool? ?? false,
+                courseLatitude: course['latitude'] as double?,
+                courseLongitude: course['longitude'] as double?,
               );
             },
           );

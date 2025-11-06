@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:golf_tracker_app/models/course.dart';
+import 'package:golf_tracker_app/services/location_service.dart';
 
 enum CourseCardType { courseScoreCard, friendCourseScoreCard, courseCard }
 
-class CourseCard extends StatelessWidget {
+class CourseCard extends StatefulWidget {
   final CourseCardType type;
   final String courseName;
   final String courseImage;
@@ -17,6 +18,8 @@ class CourseCard extends StatelessWidget {
   final Course? course;
   final VoidCallback? onPlay;
   final String? imageUrl;
+  final double? courseLatitude;
+  final double? courseLongitude;
 
   const CourseCard({
     super.key,
@@ -33,7 +36,46 @@ class CourseCard extends StatelessWidget {
     this.course,
     this.onPlay,
     this.imageUrl,
+    this.courseLatitude,
+    this.courseLongitude,
   });
+
+  @override
+  State<CourseCard> createState() => _CourseCardState();
+}
+
+class _CourseCardState extends State<CourseCard> {
+  final LocationService _locationService = LocationService();
+  String? _distanceFromUser;
+  bool _isCalculatingDistance = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.type == CourseCardType.courseCard && 
+        widget.courseLatitude != null && 
+        widget.courseLongitude != null) {
+      _calculateDistance();
+    }
+  }
+
+  Future<void> _calculateDistance() async {
+    setState(() {
+      _isCalculatingDistance = true;
+    });
+
+    final distanceInMiles = await _locationService.getDistanceToCourse(
+      widget.courseLatitude!,
+      widget.courseLongitude!,
+    );
+
+    if (mounted) {
+      setState(() {
+        _distanceFromUser = distanceInMiles;
+        _isCalculatingDistance = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -60,26 +102,61 @@ class CourseCard extends StatelessWidget {
   Widget _buildHeader() {
     return Padding(
       padding: const EdgeInsets.all(16),
-      child: type == CourseCardType.courseCard
+      child: widget.type == CourseCardType.courseCard
           ? Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(courseName, style: _textStyle(18, FontWeight.w700)),
+                Text(widget.courseName, style: _textStyle(18, FontWeight.w700)),
                 const SizedBox(height: 4),
-                Text('$distance yards', style: _textStyle(14, FontWeight.w400)),
+                _buildDistanceRow(),
+                const SizedBox(height: 4),
+                Text('${widget.distance} yards', style: _textStyle(14, FontWeight.w400)),
               ],
             )
-          : type == CourseCardType.friendCourseScoreCard
+          : widget.type == CourseCardType.friendCourseScoreCard
               ? Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('$friendName Played at:', style: _textStyle(16, FontWeight.w600)),
+                    Text('${widget.friendName} Played at:', style: _textStyle(16, FontWeight.w600)),
                     const SizedBox(height: 4),
-                    Text('$courseName - $holes holes Par $par', style: _textStyle(14, FontWeight.w500)),
+                    Text('${widget.courseName} - ${widget.holes} holes Par ${widget.par}', 
+                         style: _textStyle(14, FontWeight.w500)),
                   ],
                 )
-              : Text('$courseName - $holes holes Par $par', style: _textStyle(14, FontWeight.w600)),
+              : Text('${widget.courseName} - ${widget.holes} holes Par ${widget.par}', 
+                     style: _textStyle(14, FontWeight.w600)),
     );
+  }
+
+  Widget _buildDistanceRow() {
+    if (_isCalculatingDistance) {
+      return Row(
+        children: [
+          SizedBox(
+            width: 12,
+            height: 12,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              valueColor: AlwaysStoppedAnimation<Color>(const Color(0xFF6B8E4E)),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text('Calculating distance...', style: _textStyle(14, FontWeight.w400)),
+        ],
+      );
+    }
+
+    if (_distanceFromUser != null) {
+      return Row(
+        children: [
+          Icon(Icons.location_on, size: 16, color: const Color(0xFF6B8E4E)),
+          const SizedBox(width: 4),
+          Text('$_distanceFromUser miles away', style: _textStyle(14, FontWeight.w400)),
+        ],
+      );
+    }
+
+    return const SizedBox.shrink();
   }
 
   Widget _buildImage() {
@@ -89,9 +166,9 @@ class CourseCard extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 10),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(8),
-            child: imageUrl != null && imageUrl!.isNotEmpty
+            child: widget.imageUrl != null && widget.imageUrl!.isNotEmpty
                 ? Image.network(
-                    imageUrl!,
+                    widget.imageUrl!,
                     height: constraints.maxWidth * 0.6,
                     width: constraints.maxWidth,
                     fit: BoxFit.cover,
@@ -121,7 +198,7 @@ class CourseCard extends StatelessWidget {
                     },
                   )
                 : Image.asset(
-                    courseImage,
+                    widget.courseImage,
                     height: constraints.maxWidth * 0.6,
                     width: constraints.maxWidth,
                     fit: BoxFit.cover,
@@ -140,17 +217,16 @@ class CourseCard extends StatelessWidget {
     );
   }
 
-
   Widget _buildFooter() {
     return Padding(
       padding: const EdgeInsets.all(16),
-      child: type == CourseCardType.courseCard
+      child: widget.type == CourseCardType.courseCard
           ? Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Par $par', style: _textStyle(16, FontWeight.w600)),
-                Text('$holes holes', style: _textStyle(14, FontWeight.w400)),
-                Text(hasCarts! ? 'Carts' : 'No Carts', style: _textStyle(14, FontWeight.w400)),
+                Text('Par ${widget.par}', style: _textStyle(16, FontWeight.w600)),
+                Text('${widget.holes} holes', style: _textStyle(14, FontWeight.w400)),
+                Text(widget.hasCarts! ? 'Carts' : 'No Carts', style: _textStyle(14, FontWeight.w400)),
                 const SizedBox(height: 12),
                 Row(
                   children: [
@@ -164,8 +240,8 @@ class CourseCard extends StatelessWidget {
           : Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                _buildScoreItem('Total Score:', totalScore.toString()),
-                _buildScoreItem('Relative to Par:', '${relativeToPar! >= 0 ? '+' : ''}$relativeToPar'),
+                _buildScoreItem('Total Score:', widget.totalScore.toString()),
+                _buildScoreItem('Relative to Par:', '${widget.relativeToPar! >= 0 ? '+' : ''}${widget.relativeToPar}'),
               ],
             ),
     );
@@ -184,7 +260,7 @@ class CourseCard extends StatelessWidget {
 
   Widget _buildButton(String text, {bool isOutlined = false}) {
     final isPlayButton = text == 'Play';
-    final onPressed = isPlayButton && !isOutlined ? onPlay : () {};
+    final onPressed = isPlayButton && !isOutlined ? widget.onPlay : () {};
     
     return isOutlined
         ? OutlinedButton(
