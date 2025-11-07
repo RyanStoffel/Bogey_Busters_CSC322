@@ -135,6 +135,18 @@ class CoursePreviewScreen extends StatelessWidget {
                                 Expanded(
                                   flex: 1,
                                   child: Text(
+                                    'Yards',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.white,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                ),
+                                Expanded(
+                                  flex: 1,
+                                  child: Text(
                                     'HCP',
                                     textAlign: TextAlign.center,
                                     style: TextStyle(
@@ -151,6 +163,22 @@ class CoursePreviewScreen extends StatelessWidget {
                             final index = entry.key;
                             final hole = entry.value;
                             final isEven = index % 2 == 0;
+
+                            int whiteTeeYardsForCurrentHole = 0;
+
+                            // Check if 'hole' is a Map and has 'teeBoxes'
+                            if (hole is Map<String, dynamic> && hole['teeBoxes'] is List) {
+                              // Iterate through the teeBoxes for this specific hole
+                              for (var teeBoxData in hole['teeBoxes']) {
+                                // Check if the teeBoxData is a Map, has a 'name', and it's 'white'
+                                if (teeBoxData is Map<String, dynamic> &&
+                                    teeBoxData['name'] == "white" &&
+                                    teeBoxData['yards'] is int) {
+                                  whiteTeeYardsForCurrentHole = teeBoxData['yards'] as int;
+                                  break; // Found the 'white' tee box, no need to check others for this hole
+                                }
+                              }
+                            }
 
                             return Container(
                               decoration: BoxDecoration(
@@ -184,6 +212,18 @@ class CoursePreviewScreen extends StatelessWidget {
                                     flex: 1,
                                     child: Text(
                                       '${hole['par'] ?? 'N/A'}',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                        color: const Color(0xFF6B8E4E),
+                                      ),
+                                    ),
+                                  ),
+                                  Expanded(
+                                    flex: 1,
+                                    child: Text(
+                                      whiteTeeYardsForCurrentHole.toString(),
                                       textAlign: TextAlign.center,
                                       style: TextStyle(
                                         fontSize: 14,
