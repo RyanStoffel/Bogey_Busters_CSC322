@@ -17,6 +17,7 @@ class CourseCard extends StatefulWidget {
   final bool? hasCarts;
   final Course? course;
   final VoidCallback? onPlay;
+  final VoidCallback? onPreview;
   final String? imageUrl;
   final double? courseLatitude;
   final double? courseLongitude;
@@ -35,6 +36,7 @@ class CourseCard extends StatefulWidget {
     this.hasCarts,
     this.course,
     this.onPlay,
+    this.onPreview,
     this.imageUrl,
     this.courseLatitude,
     this.courseLongitude,
@@ -52,8 +54,8 @@ class _CourseCardState extends State<CourseCard> {
   @override
   void initState() {
     super.initState();
-    if (widget.type == CourseCardType.courseCard && 
-        widget.courseLatitude != null && 
+    if (widget.type == CourseCardType.courseCard &&
+        widget.courseLatitude != null &&
         widget.courseLongitude != null) {
       _calculateDistance();
     }
@@ -117,14 +119,15 @@ class _CourseCardState extends State<CourseCard> {
               ? Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('${widget.friendName} Played at:', style: _textStyle(16, FontWeight.w600)),
+                    Text('${widget.friendName} Played at:',
+                        style: _textStyle(16, FontWeight.w600)),
                     const SizedBox(height: 4),
-                    Text('${widget.courseName} - ${widget.holes} holes Par ${widget.par}', 
-                         style: _textStyle(14, FontWeight.w500)),
+                    Text('${widget.courseName} - ${widget.holes} holes Par ${widget.par}',
+                        style: _textStyle(14, FontWeight.w500)),
                   ],
                 )
-              : Text('${widget.courseName} - ${widget.holes} holes Par ${widget.par}', 
-                     style: _textStyle(14, FontWeight.w600)),
+              : Text('${widget.courseName} - ${widget.holes} holes Par ${widget.par}',
+                  style: _textStyle(14, FontWeight.w600)),
     );
   }
 
@@ -226,7 +229,8 @@ class _CourseCardState extends State<CourseCard> {
               children: [
                 Text('Par ${widget.par}', style: _textStyle(16, FontWeight.w600)),
                 Text('${widget.holes} holes', style: _textStyle(14, FontWeight.w400)),
-                Text(widget.hasCarts! ? 'Carts' : 'No Carts', style: _textStyle(14, FontWeight.w400)),
+                Text(widget.hasCarts! ? 'Carts' : 'No Carts',
+                    style: _textStyle(14, FontWeight.w400)),
                 const SizedBox(height: 12),
                 Row(
                   children: [
@@ -241,7 +245,8 @@ class _CourseCardState extends State<CourseCard> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 _buildScoreItem('Total Score:', widget.totalScore.toString()),
-                _buildScoreItem('Relative to Par:', '${widget.relativeToPar! >= 0 ? '+' : ''}${widget.relativeToPar}'),
+                _buildScoreItem('Relative to Par:',
+                    '${widget.relativeToPar! >= 0 ? '+' : ''}${widget.relativeToPar}'),
               ],
             ),
     );
@@ -260,8 +265,11 @@ class _CourseCardState extends State<CourseCard> {
 
   Widget _buildButton(String text, {bool isOutlined = false}) {
     final isPlayButton = text == 'Play';
-    final onPressed = isPlayButton && !isOutlined ? widget.onPlay : () {};
-    
+    final isPreviewButton = text == 'Preview';
+
+    final VoidCallback? onPressed =
+        isPlayButton ? widget.onPlay : (isPreviewButton ? widget.onPreview : null);
+
     return isOutlined
         ? OutlinedButton(
             onPressed: onPressed,

@@ -1,18 +1,19 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:go_router/go_router.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:golf_tracker_app/screens/auth_screen.dart';
-import 'package:golf_tracker_app/screens/edit_profile_screen.dart';
-import 'package:golf_tracker_app/screens/splash_screen.dart';
-import 'package:golf_tracker_app/screens/home_screen.dart';
-import 'package:golf_tracker_app/screens/friends_screen.dart';
+import 'package:golf_tracker_app/screens/course_preview_screen.dart';
 import 'package:golf_tracker_app/screens/courses_screen.dart';
+import 'package:golf_tracker_app/screens/edit_profile_screen.dart';
+import 'package:golf_tracker_app/screens/friends_screen.dart';
+import 'package:golf_tracker_app/screens/home_screen.dart';
+import 'package:golf_tracker_app/screens/onboarding_screen.dart';
 import 'package:golf_tracker_app/screens/play_screen.dart';
 import 'package:golf_tracker_app/screens/profile_screen.dart';
 import 'package:golf_tracker_app/screens/shell_screen.dart';
+import 'package:golf_tracker_app/screens/splash_screen.dart';
 import 'package:golf_tracker_app/screens/verify_email_screen.dart';
-import 'package:golf_tracker_app/screens/onboarding_screen.dart';
 
 class AuthNotifier extends ChangeNotifier {
   AuthNotifier() {
@@ -33,14 +34,14 @@ final GoRouter screenRouter = GoRouter(
     final isOnAuthScreen = state.uri.path == '/auth';
     final isOnVerifyEmail = state.uri.path == '/verify-email';
     final isOnOnboarding = state.uri.path == '/onboarding';
-    
+
     if (isOnSplashScreen) return null;
-    
+
     // No user - redirect to auth
     if (user == null && !isOnAuthScreen) {
       return '/auth';
     }
-    
+
     // User exists - check verification and onboarding status
     if (user != null) {
       // If on auth screen and logged in, need to check verification
@@ -48,18 +49,16 @@ final GoRouter screenRouter = GoRouter(
         if (!user.emailVerified) {
           return '/verify-email';
         }
-        
+
         // Check onboarding status
         try {
-          final doc = await FirebaseFirestore.instance
-              .collection('users')
-              .doc(user.uid)
-              .get();
-          
+          final doc =
+              await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+
           if (doc.exists) {
             final data = doc.data();
             final onboardingCompleted = data?['onboardingCompleted'] ?? false;
-            
+
             if (!onboardingCompleted) {
               return '/onboarding';
             }
@@ -68,27 +67,25 @@ final GoRouter screenRouter = GoRouter(
           // If we can't check, assume they need onboarding
           return '/onboarding';
         }
-        
+
         return '/home';
       }
-      
+
       // If not verified and not on verify-email page
       if (!user.emailVerified && !isOnVerifyEmail) {
         return '/verify-email';
       }
-      
+
       // If verified but not on onboarding page, check if onboarding is needed
       if (user.emailVerified && !isOnOnboarding) {
         try {
-          final doc = await FirebaseFirestore.instance
-              .collection('users')
-              .doc(user.uid)
-              .get();
-          
+          final doc =
+              await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+
           if (doc.exists) {
             final data = doc.data();
             final onboardingCompleted = data?['onboardingCompleted'] ?? false;
-            
+
             if (!onboardingCompleted) {
               return '/onboarding';
             }
@@ -100,7 +97,7 @@ final GoRouter screenRouter = GoRouter(
         }
       }
     }
-    
+
     return null;
   },
   routes: [
@@ -135,7 +132,7 @@ final GoRouter screenRouter = GoRouter(
       builder: (context, state, body) {
         int currentIndex = 0;
         final location = state.uri.path;
-        
+
         if (location.startsWith('/friends')) {
           currentIndex = 0;
         } else if (location.startsWith('/courses')) {
@@ -167,11 +164,21 @@ final GoRouter screenRouter = GoRouter(
           ),
         ),
         GoRoute(
-          path: '/courses',
-          pageBuilder: (context, state) => NoTransitionPage(
-            child: CoursesScreen(),
-          ),
-        ),
+            path: '/courses',
+            pageBuilder: (context, state) => NoTransitionPage(
+                  child: CoursesScreen(),
+                ),
+            routes: [
+              GoRoute(
+                path: 'course-preview',
+                pageBuilder: (context, state) {
+                  final course = state.extra as Map<String, dynamic>?;
+                  return NoTransitionPage(
+                    child: CoursePreviewScreen(course: course ?? {}),
+                  );
+                },
+              )
+            ]),
         GoRoute(
           path: '/play',
           pageBuilder: (context, state) => NoTransitionPage(
@@ -189,6 +196,15 @@ final GoRouter screenRouter = GoRouter(
           pageBuilder: (context, state) => NoTransitionPage(
             child: const EditProfileScreen(),
           ),
+        ),
+        GoRoute(
+          path: '/course-preview',
+          pageBuilder: (context, state) {
+            final course = state.extra as Map<String, dynamic>?;
+            return NoTransitionPage(
+              child: CoursePreviewScreen(course: course ?? {}),
+            );
+          },
         ),
       ],
     ),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:golf_tracker_app/services/course_service.dart';
 import 'package:golf_tracker_app/widgets/course_cards.dart';
 
@@ -33,8 +34,8 @@ class CoursesScreen extends StatelessWidget {
                 type: CourseCardType.courseCard,
                 courseName: course['name'] ?? 'Unknown',
                 courseImage: 'assets/images/default.png',
-                imageUrl: (course['imageUrl'] as String?)?.isNotEmpty == true 
-                    ? course['imageUrl'] as String 
+                imageUrl: (course['imageUrl'] as String?)?.isNotEmpty == true
+                    ? course['imageUrl'] as String
                     : null,
                 holes: course['holes'] as int? ?? 18,
                 par: course['par'] as int? ?? 72,
@@ -42,6 +43,10 @@ class CoursesScreen extends StatelessWidget {
                 hasCarts: course['hasCarts'] as bool? ?? false,
                 courseLatitude: course['latitude'] as double?,
                 courseLongitude: course['longitude'] as double?,
+                onPreview: () {
+                  context.push('/courses/course-preview', extra: course);
+                },
+                onPlay: () {},
               );
             },
           );

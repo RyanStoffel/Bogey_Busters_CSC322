@@ -9,17 +9,17 @@ class CourseService {
   Future<List<Map<String, dynamic>>> getAllCoursesForDisplay() async {
     try {
       final snapshot = await _firestore.collection('courses').get();
-      
+
       List<Map<String, dynamic>> courses = [];
       for (var doc in snapshot.docs) {
         final data = doc.data();
-        
+
         // Get the download URL for the image if it's a storage path
         String? imageUrl = data['imageUrl'];
         if (imageUrl != null && imageUrl.startsWith('gs://')) {
           imageUrl = await _getDownloadUrl(imageUrl);
         }
-        
+
         // Handle holes field - it could be an int (total holes) or a List (hole objects)
         int totalHoles = 18; // default
         if (data['holes'] != null) {
@@ -31,19 +31,21 @@ class CourseService {
         } else if (data['totalHoles'] != null) {
           totalHoles = data['totalHoles'] as int;
         }
-        
+
         courses.add({
           'id': doc.id,
           'name': data['courseName'] ?? data['name'] ?? 'Unknown Course',
           'holes': totalHoles,
+          'holesData': data['holes'], // Pass the raw holes data from Firebase
           'par': data['totalPar'] ?? data['par'] ?? 72,
           'distance': data['distance'] ?? 'Unknown distance',
-          'totalYards': data['totalYards']?.toString() ?? data['distance'] ?? 'Unknown distance',
+          'totalYards':
+              data['totalYards']?.toString() ?? data['distance'] ?? 'Unknown distance',
           'hasCarts': data['hasCarts'] ?? false,
           'imageUrl': imageUrl ?? '',
         });
       }
-      
+
       return courses;
     } catch (e) {
       print('Error fetching courses: $e');
@@ -55,15 +57,15 @@ class CourseService {
   Stream<List<Map<String, dynamic>>> getCoursesStream() {
     return _firestore.collection('courses').snapshots().asyncMap((snapshot) async {
       List<Map<String, dynamic>> courses = [];
-      
+
       for (var doc in snapshot.docs) {
         final data = doc.data();
-        
+
         String? imageUrl = data['imageUrl'];
         if (imageUrl != null && imageUrl.startsWith('gs://')) {
           imageUrl = await _getDownloadUrl(imageUrl);
         }
-        
+
         // Handle holes field - it could be an int (total holes) or a List (hole objects)
         int totalHoles = 18; // default
         if (data['holes'] != null) {
@@ -75,19 +77,21 @@ class CourseService {
         } else if (data['totalHoles'] != null) {
           totalHoles = data['totalHoles'] as int;
         }
-        
+
         courses.add({
           'id': doc.id,
           'name': data['courseName'] ?? data['name'] ?? 'Unknown Course',
           'holes': totalHoles,
+          'holesData': data['holes'], // Pass the raw holes data from Firebase
           'par': data['totalPar'] ?? data['par'] ?? 72,
           'distance': data['distance'] ?? 'Unknown distance',
-          'totalYards': data['totalYards']?.toString() ?? data['distance'] ?? 'Unknown distance',
+          'totalYards':
+              data['totalYards']?.toString() ?? data['distance'] ?? 'Unknown distance',
           'hasCarts': data['hasCarts'] ?? false,
           'imageUrl': imageUrl ?? '',
         });
       }
-      
+
       return courses;
     });
   }
