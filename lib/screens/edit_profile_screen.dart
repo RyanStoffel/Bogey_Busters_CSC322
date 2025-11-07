@@ -20,7 +20,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   ///////////////////////
   /// Flutter Methods ///
   ///////////////////////
-
+  Future<void> getUserDocument() async {
+    
+  }
 
 
   @override

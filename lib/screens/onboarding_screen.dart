@@ -223,7 +223,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   controller: displayNameController,
                   decoration: InputDecoration(
                     labelText: 'Display Name',
-                    prefixIcon: const Icon(Icons.person),
+                    prefixIcon: const Icon(Icons.alternate_email),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),

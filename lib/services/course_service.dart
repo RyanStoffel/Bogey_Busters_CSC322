@@ -42,7 +42,7 @@ class CourseService {
           'totalYards':
               data['totalYards']?.toString() ?? data['distance'] ?? 'Unknown distance',
           'hasCarts': data['hasCarts'] ?? false,
-          'imageUrl': imageUrl ?? '',
+          'imageUrl': imageUrl ?? ''
         });
       }
 
@@ -88,7 +88,7 @@ class CourseService {
           'totalYards':
               data['totalYards']?.toString() ?? data['distance'] ?? 'Unknown distance',
           'hasCarts': data['hasCarts'] ?? false,
-          'imageUrl': imageUrl ?? '',
+          'imageUrl': imageUrl ?? ''
         });
       }
 
