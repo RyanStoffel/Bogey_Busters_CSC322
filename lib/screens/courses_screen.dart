@@ -14,11 +14,18 @@ class CoursesScreen extends StatefulWidget {
 class _CoursesScreenState extends State<CoursesScreen> {
   final OverpassApiService _overpassApiService = OverpassApiService();
   late Future<List<Course>> _courses;
+  int _displayCount = 5; // Number of courses to display initially
 
   @override
   void initState() {
     super.initState();
     _courses = _loadCourses();
+  }
+
+  void _loadMoreCourses() {
+    setState(() {
+      _displayCount += 10;
+    });
   }
 
   Future<List<Course>> _loadCourses() async {
@@ -102,6 +109,7 @@ class _CoursesScreenState extends State<CoursesScreen> {
             icon: const Icon(Icons.refresh),
             onPressed: () {
               setState(() {
+                _displayCount = 15; // Reset display count
                 _courses = _loadCourses();
               });
             },
@@ -179,11 +187,32 @@ class _CoursesScreenState extends State<CoursesScreen> {
             );
           }
 
+          // Limit the displayed courses to _displayCount
+          final displayedCourses = courses.take(_displayCount).toList();
+          final hasMore = courses.length > _displayCount;
+
           return ListView.builder(
             padding: const EdgeInsets.all(16),
-            itemCount: courses.length,
+            itemCount: displayedCourses.length + (hasMore ? 1 : 0), // Add 1 for the button if there are more courses
             itemBuilder: (context, index) {
-              final course = courses[index];
+              // Show "Load More" button as the last item if there are more courses
+              if (index == displayedCourses.length) {
+                return Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 16.0),
+                  child: Center(
+                    child: ElevatedButton.icon(
+                      onPressed: _loadMoreCourses,
+                      icon: const Icon(Icons.arrow_downward),
+                      label: Text('Load More (${courses.length - _displayCount} remaining)'),
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                      ),
+                    ),
+                  ),
+                );
+              }
+
+              final course = displayedCourses[index];
               
               return CourseCard(
                 type: CourseCardType.courseCard,
