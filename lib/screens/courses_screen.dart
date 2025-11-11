@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:golf_tracker_app/services/overpass_api_service.dart';
 import 'package:golf_tracker_app/models/models.dart';
 import 'package:golf_tracker_app/widgets/course_cards.dart';
@@ -24,25 +23,38 @@ class _CoursesScreenState extends State<CoursesScreen> {
 
   Future<List<Course>> _loadCourses() async {
     try {
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
+      // Hardcoded CBU location as fallback
+      const double cbuLatitude = 33.929483;
+      const double cbuLongitude = -117.286400;
+      
+      double latitude = cbuLatitude;
+      double longitude = cbuLongitude;
+
+      try {
+        LocationPermission permission = await Geolocator.checkPermission();
         if (permission == LocationPermission.denied) {
-          throw Exception('Location permissions are denied');
+          permission = await Geolocator.requestPermission();
         }
-      }
 
-      if (permission == LocationPermission.deniedForever) {
-        throw Exception('Location permissions are permanently denied');
+        if (permission != LocationPermission.deniedForever && 
+            permission != LocationPermission.denied) {
+          Position position = await Geolocator.getCurrentPosition(
+            locationSettings: LocationSettings(
+              accuracy: LocationAccuracy.high,
+            ),
+          );
+          latitude = position.latitude;
+          longitude = position.longitude;
+        } else {
+          print('Location permission denied, using CBU location');
+        }
+      } catch (e) {
+        print('Error getting location: $e. Using CBU location');
       }
-
-      Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-      );
 
       return await _overpassApiService.fetchNearbyCourses(
-        latitude: position.latitude,
-        longitude: position.longitude,
+        latitude: latitude,
+        longitude: longitude,
         radiusInMiles: 25.0,
       );
     } catch (e) {
