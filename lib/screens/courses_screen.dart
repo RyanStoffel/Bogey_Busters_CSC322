@@ -52,11 +52,30 @@ class _CoursesScreenState extends State<CoursesScreen> {
         print('Error getting location: $e. Using CBU location');
       }
 
-      return await _overpassApiService.fetchNearbyCourses(
+      List<Course> courses = await _overpassApiService.fetchNearbyCourses(
         latitude: latitude,
         longitude: longitude,
         radiusInMiles: 25.0,
       );
+
+      // Sort courses by distance from current location (closest first)
+      courses.sort((a, b) {
+        double distanceA = Geolocator.distanceBetween(
+          latitude,
+          longitude,
+          a.location.latitude!,
+          a.location.longitude!,
+        );
+        double distanceB = Geolocator.distanceBetween(
+          latitude,
+          longitude,
+          b.location.latitude!,
+          b.location.longitude!,
+        );
+        return distanceA.compareTo(distanceB);
+      });
+
+      return courses;
     } catch (e) {
       throw Exception('Failed to load courses: $e');
     }
