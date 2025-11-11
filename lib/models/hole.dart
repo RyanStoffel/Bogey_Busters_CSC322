@@ -6,7 +6,6 @@ class Hole {
     required this.holeNumber,
     required this.par,
     this.handicap, 
-    this.yards,
     this.teeBoxes, 
     this.greenLocation, 
     this.greenCoordinates, 
@@ -14,9 +13,8 @@ class Hole {
   });
 
   final int holeNumber;
-  final int par;
+  int? par;
   int? handicap; 
-  int? yards;
   List<TeeBox>? teeBoxes; 
   CoordinatePoint? greenLocation; 
   List<CoordinatePoint>? greenCoordinates; 
@@ -28,7 +26,6 @@ class Hole {
       'holeNumber': holeNumber,
       'par': par,
       'handicap': handicap,
-      'yards': yards,
       'teeBoxes': teeBoxes?.map((t) => t.toJson()).toList(),
       'greenLocation': greenLocation?.toJson(),
       'greenCoordinates': greenCoordinates?.map((c) => c.toJson()).toList(),
@@ -42,7 +39,6 @@ class Hole {
       holeNumber: json['holeNumber'] as int,
       par: json['par'] as int,
       handicap: json['handicap'] as int?,
-      yards: json['yards'] as int?,
       teeBoxes: (json['teeBoxes'] as List<dynamic>?)
           ?.map((t) => TeeBox.fromJson(t as Map<String, dynamic>))
           .toList(),

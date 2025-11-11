@@ -4,8 +4,8 @@ class CoordinatePoint {
     required this.longitude,
   });
 
-  final double latitude;
-  final double longitude;
+  double? latitude;
+  double? longitude;
 
   // Convert to JSON
   Map<String, dynamic> toJson() {
