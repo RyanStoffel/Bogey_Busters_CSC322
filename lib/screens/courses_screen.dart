@@ -1,54 +1,172 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:golf_tracker_app/services/course_service.dart';
+import 'package:golf_tracker_app/services/overpass_api_service.dart';
+import 'package:golf_tracker_app/models/models.dart';
 import 'package:golf_tracker_app/widgets/course_cards.dart';
+import 'package:geolocator/geolocator.dart';
 
-class CoursesScreen extends StatelessWidget {
-  final CourseService _service = CourseService();
+class CoursesScreen extends StatefulWidget {
+  const CoursesScreen({super.key});
 
-  CoursesScreen({super.key});
+  @override
+  State<CoursesScreen> createState() => _CoursesScreenState();
+}
+
+class _CoursesScreenState extends State<CoursesScreen> {
+  final OverpassApiService _overpassApiService = OverpassApiService();
+  late Future<List<Course>> _courses;
+
+  @override
+  void initState() {
+    super.initState();
+    _courses = _loadCourses();
+  }
+
+  Future<List<Course>> _loadCourses() async {
+    try {
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          throw Exception('Location permissions are denied');
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        throw Exception('Location permissions are permanently denied');
+      }
+
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
+      return await _overpassApiService.fetchNearbyCourses(
+        latitude: position.latitude,
+        longitude: position.longitude,
+        radiusInMiles: 25.0,
+      );
+    } catch (e) {
+      throw Exception('Failed to load courses: $e');
+    }
+  }
+
+  String _formatAddress(Course course) {
+    final parts = <String>[];
+    
+    if (course.courseHouseNumber != null) parts.add(course.courseHouseNumber!);
+    if (course.courseStreetAddress != null) parts.add(course.courseStreetAddress!);
+    if (course.courseCity != null) parts.add(course.courseCity!);
+    if (course.courseState != null) parts.add(course.courseState!);
+    
+    return parts.isEmpty ? 'Address not available' : parts.join(', ');
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Courses')),
-      body: FutureBuilder<List<Map<String, dynamic>>>(
-        future: _service.getAllCoursesForDisplay(),
+      appBar: AppBar(
+        title: const Text('Nearby Courses'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: () {
+              setState(() {
+                _courses = _loadCourses();
+              });
+            },
+          ),
+        ],
+      ),
+      body: FutureBuilder<List<Course>>(
+        future: _courses,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
+            return const Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text('Loading nearby courses...'),
+                ],
+              ),
+            );
           }
+
           if (snapshot.hasError) {
-            return Center(child: Text('Error loading courses: ${snapshot.error}'));
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.error_outline, size: 48, color: Colors.red),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Error loading courses',
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '${snapshot.error}',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                    const SizedBox(height: 16),
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        setState(() {
+                          _courses = _loadCourses();
+                        });
+                      },
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('Retry'),
+                    ),
+                  ],
+                ),
+              ),
+            );
           }
+
           final courses = snapshot.data ?? [];
+          
           if (courses.isEmpty) {
-            return const Center(child: Text('No courses found'));
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.golf_course, size: 64, color: Colors.grey),
+                  const SizedBox(height: 16),
+                  Text(
+                    'No courses found nearby',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  const SizedBox(height: 8),
+                  const Text('Try adjusting your search radius'),
+                ],
+              ),
+            );
           }
+
           return ListView.builder(
             padding: const EdgeInsets.all(16),
             itemCount: courses.length,
             itemBuilder: (context, index) {
               final course = courses[index];
+              
               return CourseCard(
                 type: CourseCardType.courseCard,
-                courseName: course['name'] ?? 'Unknown',
+                courseName: course.courseName,
                 courseImage: 'assets/images/default.png',
-                imageUrl: (course['imageUrl'] as String?)?.isNotEmpty == true
-                    ? course['imageUrl'] as String
-                    : null,
-                holes: course['holes'] as int? ?? 18,
-                par: course['par'] as int? ?? 72,
-                distance: course['totalYards'] as String? ?? 'Unknown distance',
-                hasCarts: course['hasCarts'] as bool? ?? false,
-                courseLatitude: course['latitude'] as double?,
-                courseLongitude: course['longitude'] as double?,
-                onPreview: () {
-                  context.push('/courses/course-preview', extra: course);
-                },
-                onPlay: () {
-                  context.push('/play/play-course', extra: course);
-                },
+                imageUrl: null, 
+                holes: 18, 
+                par: course.totalPar ?? 72, 
+                distance: _formatAddress(course),
+                hasCarts: false, 
+                courseLatitude: course.location.latitude,
+                courseLongitude: course.location.longitude,
+                onPreview: () {},
+                onPlay: () {},
               );
             },
           );
