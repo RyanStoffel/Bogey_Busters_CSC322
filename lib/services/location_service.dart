@@ -1,33 +1,99 @@
 import 'package:geolocator/geolocator.dart';
 
 class LocationService {
+  /* 
+
+
+       HARDCODED LOCATION!!!!
+
+
+  */
+  static const double _cbuLatitude = 33.9297;
+  static const double _cbuLongitude = -117.2864;
+
+
   Future<Position?> getCurrentLocation() async {
     bool serviceEnabled;
     LocationPermission permission;
 
     serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
-      print('Location services are disabled.');
-      return null;
+      print('Location services are disabled. Using hardcoded CBU location.');
+      // Return hardcoded CBU location for emulator
+      return Position(
+        latitude: _cbuLatitude,
+        longitude: _cbuLongitude,
+        timestamp: DateTime.now(),
+        accuracy: 0.0,
+        altitude: 0.0,
+        altitudeAccuracy: 0.0,
+        heading: 0.0,
+        headingAccuracy: 0.0,
+        speed: 0.0,
+        speedAccuracy: 0.0,
+      );
     }
 
     permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied) {
-        print('Location permissions are denied');
-        return null;
+        print('Location permissions are denied. Using hardcoded CBU location.');
+        // Return hardcoded CBU location for emulator
+        return Position(
+          latitude: _cbuLatitude,
+          longitude: _cbuLongitude,
+          timestamp: DateTime.now(),
+          accuracy: 0.0,
+          altitude: 0.0,
+          altitudeAccuracy: 0.0,
+          heading: 0.0,
+          headingAccuracy: 0.0,
+          speed: 0.0,
+          speedAccuracy: 0.0,
+        );
       }
     }
 
     if (permission == LocationPermission.deniedForever) {
-      print('Location permissions are permanently denied');
-      return null;
+      print('Location permissions are permanently denied. Using hardcoded CBU location.');
+      // Return hardcoded CBU location for emulator
+      return Position(
+        latitude: _cbuLatitude,
+        longitude: _cbuLongitude,
+        timestamp: DateTime.now(),
+        accuracy: 0.0,
+        altitude: 0.0,
+        altitudeAccuracy: 0.0,
+        heading: 0.0,
+        headingAccuracy: 0.0,
+        speed: 0.0,
+        speedAccuracy: 0.0,
+      );
     }
 
-    return await Geolocator.getCurrentPosition(
-      desiredAccuracy: LocationAccuracy.high,
-    );
+    try {
+      return await Geolocator.getCurrentPosition(
+        locationSettings: LocationSettings(
+          accuracy: LocationAccuracy.high,
+        ),
+      );
+    } catch (e) {
+      print('Error getting location: $e. Using hardcoded CBU location.');
+      // Return hardcoded CBU location if there's an error (common on emulators)
+      return Position(
+        latitude: _cbuLatitude,
+        longitude: _cbuLongitude,
+        timestamp: DateTime.now(),
+        accuracy: 0.0,
+        altitude: 0.0,
+        altitudeAccuracy: 0.0,
+        heading: 0.0,
+        headingAccuracy: 0.0,
+        speed: 0.0,
+        speedAccuracy: 0.0,
+      );
+    }
   }
 
   double getDistanceInMiles(
@@ -63,11 +129,15 @@ class LocationService {
     double courseLatitude,
     double courseLongitude,
   ) async {
+    print('LocationService: Getting distance to course at lat=$courseLatitude, lng=$courseLongitude');
     Position? currentPosition = await getCurrentLocation();
 
     if (currentPosition == null) {
+      print('LocationService: Could not get current position');
       return null;
     }
+
+    print('LocationService: Current position: lat=${currentPosition.latitude}, lng=${currentPosition.longitude}');
 
     double miles = getDistanceInMiles(
       currentPosition.latitude,
@@ -75,6 +145,8 @@ class LocationService {
       courseLatitude,
       courseLongitude,
     );
+
+    print('LocationService: Distance calculated: $miles miles');
 
     return formatDistance(miles);
   }

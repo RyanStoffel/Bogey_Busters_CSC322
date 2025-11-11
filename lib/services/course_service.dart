@@ -32,6 +32,17 @@ class CourseService {
           totalHoles = data['totalHoles'] as int;
         }
 
+        // Extract latitude and longitude from location object or direct fields
+        double? latitude;
+        double? longitude;
+        if (data['location'] != null && data['location'] is Map) {
+          latitude = data['location']['latitude'] as double?;
+          longitude = data['location']['longitude'] as double?;
+        } else {
+          latitude = data['latitude'] as double?;
+          longitude = data['longitude'] as double?;
+        }
+
         courses.add({
           'id': doc.id,
           'name': data['courseName'] ?? data['name'] ?? 'Unknown Course',
@@ -43,8 +54,8 @@ class CourseService {
               data['totalYards']?.toString() ?? data['distance'] ?? 'Unknown distance',
           'hasCarts': data['hasCarts'] ?? false,
           'imageUrl': imageUrl ?? '',
-          'latitude': data['latitude'] as double?,
-          'longitude': data['longitude'] as double?,
+          'latitude': latitude,
+          'longitude': longitude,
         });
       }
 
@@ -80,6 +91,17 @@ class CourseService {
           totalHoles = data['totalHoles'] as int;
         }
 
+        // Extract latitude and longitude from location object or direct fields
+        double? latitude;
+        double? longitude;
+        if (data['location'] != null && data['location'] is Map) {
+          latitude = data['location']['latitude'] as double?;
+          longitude = data['location']['longitude'] as double?;
+        } else {
+          latitude = data['latitude'] as double?;
+          longitude = data['longitude'] as double?;
+        }
+
         courses.add({
           'id': doc.id,
           'name': data['courseName'] ?? data['name'] ?? 'Unknown Course',
@@ -91,8 +113,8 @@ class CourseService {
               data['totalYards']?.toString() ?? data['distance'] ?? 'Unknown distance',
           'hasCarts': data['hasCarts'] ?? false,
           'imageUrl': imageUrl ?? '',
-          'latitude': data['latitude'] as double?,
-          'longitude': data['longitude'] as double?,
+          'latitude': latitude,
+          'longitude': longitude,
         });
       }
 
