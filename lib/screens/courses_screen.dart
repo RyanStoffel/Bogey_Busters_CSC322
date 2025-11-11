@@ -46,7 +46,9 @@ class CoursesScreen extends StatelessWidget {
                 onPreview: () {
                   context.push('/courses/course-preview', extra: course);
                 },
-                onPlay: () {},
+                onPlay: () {
+                  context.push('/play/play-course', extra: course);
+                },
               );
             },
           );

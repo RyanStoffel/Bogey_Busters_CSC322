@@ -181,9 +181,20 @@ final GoRouter screenRouter = GoRouter(
             ]),
         GoRoute(
           path: '/play',
-          pageBuilder: (context, state) => NoTransitionPage(
-            child: const PlayScreen(),
+          pageBuilder: (context, state) {
+                  final course = state.extra as Map<String, dynamic>?;
+                  return NoTransitionPage(
+                    child: CoursePreviewScreen(course: course ?? {}),
+                  );
+                },
+          routes: [
+            GoRoute(
+                path: 'play-course',
+                pageBuilder: (context, state) => NoTransitionPage(
+                  child: const PlayScreen(),
           ),
+              )
+          ]
         ),
         GoRoute(
           path: '/profile',
@@ -196,15 +207,6 @@ final GoRouter screenRouter = GoRouter(
           pageBuilder: (context, state) => NoTransitionPage(
             child: const EditProfileScreen(),
           ),
-        ),
-        GoRoute(
-          path: '/course-preview',
-          pageBuilder: (context, state) {
-            final course = state.extra as Map<String, dynamic>?;
-            return NoTransitionPage(
-              child: CoursePreviewScreen(course: course ?? {}),
-            );
-          },
         ),
       ],
     ),
