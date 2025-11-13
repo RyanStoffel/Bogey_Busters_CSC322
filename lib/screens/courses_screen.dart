@@ -124,7 +124,7 @@ class _CoursesScreenState extends State<CoursesScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  CircularProgressIndicator(),
+                  CircularProgressIndicator(color: Colors.green,),
                   SizedBox(height: 16),
                   Text('Loading nearby courses...'),
                 ],

@@ -181,29 +181,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Edit Profile'),
-          actions: [
-            if (!_isLoading)
-              TextButton(
-                onPressed: _isSaving ? null : saveProfile,
-                child: _isSaving
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Text(
-                        'Save',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-              ),
-          ],
         ),
         body: _isLoading
             ? const Center(
@@ -261,11 +238,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                           ),
                         ),
                         const SizedBox(height: 8),
-                        TextButton.icon(
-                          onPressed: pickImage,
-                          icon: const Icon(Icons.photo_library),
-                          label: const Text('Change Profile Picture'),
-                        ),
                         const SizedBox(height: 24),
                         TextFormField(
                           controller: firstNameController,
