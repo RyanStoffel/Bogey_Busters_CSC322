@@ -3,6 +3,7 @@ import 'package:golf_tracker_app/services/overpass_api_service.dart';
 import 'package:golf_tracker_app/models/models.dart';
 import 'package:golf_tracker_app/widgets/course_cards.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:go_router/go_router.dart';
 
 class CoursesScreen extends StatefulWidget {
   const CoursesScreen({super.key});
@@ -193,7 +194,7 @@ class _CoursesScreenState extends State<CoursesScreen> {
 
           return ListView.builder(
             padding: const EdgeInsets.all(16),
-            itemCount: displayedCourses.length + (hasMore ? 1 : 0), // Add 1 for the button if there are more courses
+            itemCount: displayedCourses.length + (hasMore ? 1 : 0),
             itemBuilder: (context, index) {
               // Show "Load More" button as the last item if there are more courses
               if (index == displayedCourses.length) {
@@ -225,8 +226,18 @@ class _CoursesScreenState extends State<CoursesScreen> {
                 hasCarts: false, 
                 courseLatitude: course.location.latitude,
                 courseLongitude: course.location.longitude,
-                onPreview: () {},
-                onPlay: () {},
+                onPreview: () {
+                  // Navigate to course preview screen with courseId
+                  context.push('/courses/preview/${Uri.encodeComponent(course.courseId)}');
+                },
+                onPlay: () {
+                  // TODO: Implement start round functionality
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Starting round at ${course.courseName}'),
+                    ),
+                  );
+                },
               );
             },
           );

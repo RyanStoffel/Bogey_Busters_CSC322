@@ -164,37 +164,38 @@ final GoRouter screenRouter = GoRouter(
           ),
         ),
         GoRoute(
-            path: '/courses',
-            pageBuilder: (context, state) => NoTransitionPage(
-                  child: CoursesScreen(),
-                ),
-            routes: [
-              GoRoute(
-                path: 'course-preview',
-                pageBuilder: (context, state) {
-                  final course = state.extra as Map<String, dynamic>?;
-                  return NoTransitionPage(
-                    child: CoursePreviewScreen(course: course ?? {}),
-                  );
-                },
-              )
-            ]),
-        GoRoute(
-          path: '/play',
-          pageBuilder: (context, state) {
-                  final course = state.extra as Map<String, dynamic>?;
-                  return NoTransitionPage(
-                    child: CoursePreviewScreen(course: course ?? {}),
-                  );
-                },
+          path: '/courses',
+          pageBuilder: (context, state) => NoTransitionPage(
+            child: const CoursesScreen(),
+          ),
           routes: [
             GoRoute(
-                path: 'play-course',
-                pageBuilder: (context, state) => NoTransitionPage(
-                  child: const PlayScreen(),
+              path: 'preview/:courseId',
+              pageBuilder: (context, state) {
+                final courseId = Uri.decodeComponent(state.pathParameters['courseId']!);
+                return NoTransitionPage(
+                  child: CoursePreviewScreen(courseId: courseId),
+                );
+              },
+            ),
+          ],
+        ),
+        GoRoute(
+          path: '/play',
+          pageBuilder: (context, state) => NoTransitionPage(
+            child: const PlayScreen(),
           ),
-              )
-          ]
+          routes: [
+            GoRoute(
+              path: 'course/:courseId',
+              pageBuilder: (context, state) {
+                final courseId = Uri.decodeComponent(state.pathParameters['courseId']!);
+                return NoTransitionPage(
+                  child: CoursePreviewScreen(courseId: courseId),
+                );
+              },
+            ),
+          ],
         ),
         GoRoute(
           path: '/profile',
