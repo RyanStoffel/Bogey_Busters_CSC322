@@ -159,7 +159,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       });
 
       if (!mounted) return;
-      context.go('/home');
+      context.go('/courses');
     } catch (e) {
       _showMessage('Failed to complete onboarding: ${e.toString()}', isError: true);
     } finally {

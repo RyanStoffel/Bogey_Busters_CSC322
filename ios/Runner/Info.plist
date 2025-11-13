@@ -67,6 +67,8 @@
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>This app needs location access to track your golf shots and mark tee and green locations.</string>
 	<key>io.flutter.embedded_views_preview</key>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>We need your location to show nearby golf courses</string>
 	<true/>
 </dict>
 </plist>

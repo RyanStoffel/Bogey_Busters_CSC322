@@ -7,13 +7,13 @@ import 'package:golf_tracker_app/screens/course_preview_screen.dart';
 import 'package:golf_tracker_app/screens/courses_screen.dart';
 import 'package:golf_tracker_app/screens/edit_profile_screen.dart';
 import 'package:golf_tracker_app/screens/friends_screen.dart';
-import 'package:golf_tracker_app/screens/home_screen.dart';
 import 'package:golf_tracker_app/screens/onboarding_screen.dart';
 import 'package:golf_tracker_app/screens/play_screen.dart';
 import 'package:golf_tracker_app/screens/profile_screen.dart';
 import 'package:golf_tracker_app/screens/shell_screen.dart';
 import 'package:golf_tracker_app/screens/splash_screen.dart';
 import 'package:golf_tracker_app/screens/verify_email_screen.dart';
+import 'package:golf_tracker_app/screens/in_round_screen.dart';
 
 class AuthNotifier extends ChangeNotifier {
   AuthNotifier() {
@@ -67,8 +67,7 @@ final GoRouter screenRouter = GoRouter(
           // If we can't check, assume they need onboarding
           return '/onboarding';
         }
-
-        return '/home';
+        return '/play';
       }
 
       // If not verified and not on verify-email page
@@ -123,6 +122,14 @@ final GoRouter screenRouter = GoRouter(
       },
     ),
     GoRoute(
+      path: '/in-round-screen',
+      pageBuilder: (context, state) {
+        return NoTransitionPage(
+          child: InRoundScreen(),
+        );
+      },
+    ),
+    GoRoute(
       path: '/onboarding',
       pageBuilder: (context, state) => NoTransitionPage(
         child: const OnboardingScreen(),
@@ -137,12 +144,10 @@ final GoRouter screenRouter = GoRouter(
           currentIndex = 0;
         } else if (location.startsWith('/courses')) {
           currentIndex = 1;
-        } else if (location.startsWith('/home')) {
+        } else if (location.startsWith('/in-round-screen')) { //CHANGE BACK TO /play WHEN DONE
           currentIndex = 2;
-        } else if (location.startsWith('/play')) {
-          currentIndex = 3;
         } else if (location.startsWith('/profile')) {
-          currentIndex = 4;
+          currentIndex = 3;
         }
 
         return ShellScreen(
@@ -151,12 +156,6 @@ final GoRouter screenRouter = GoRouter(
         );
       },
       routes: [
-        GoRoute(
-          path: '/home',
-          pageBuilder: (context, state) => NoTransitionPage(
-            child: const HomeScreen(),
-          ),
-        ),
         GoRoute(
           path: '/friends',
           pageBuilder: (context, state) => NoTransitionPage(

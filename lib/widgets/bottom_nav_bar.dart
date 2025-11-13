@@ -33,12 +33,9 @@ class _BottomNavBarState extends State<BottomNavBar> {
         context.go('/courses');
         break;
       case 2:
-        context.go('/home');
+        context.go('/in-round-screen'); //CHANGE BACK TO /play WHEN DONE
         break;
       case 3:
-        context.go('/play');
-        break;
-      case 4:
         context.go('/profile');
         break;
     }
@@ -62,10 +59,6 @@ class _BottomNavBarState extends State<BottomNavBar> {
         const BottomNavigationBarItem(
           icon: Icon(Icons.sports_golf, size: 32),
           label: "Courses",
-        ),
-        const BottomNavigationBarItem(
-          icon: Icon(Icons.home, size: 32),
-          label: "Home",
         ),
         const BottomNavigationBarItem(
           icon: Icon(Icons.play_circle, size: 32),

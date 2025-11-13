@@ -18,8 +18,6 @@ class LocationService {
 
     serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
-      print('Location services are disabled. Using hardcoded CBU location.');
-      // Return hardcoded CBU location for emulator
       return Position(
         latitude: _cbuLatitude,
         longitude: _cbuLongitude,
@@ -38,8 +36,6 @@ class LocationService {
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied) {
-        print('Location permissions are denied. Using hardcoded CBU location.');
-        // Return hardcoded CBU location for emulator
         return Position(
           latitude: _cbuLatitude,
           longitude: _cbuLongitude,
@@ -56,8 +52,6 @@ class LocationService {
     }
 
     if (permission == LocationPermission.deniedForever) {
-      print('Location permissions are permanently denied. Using hardcoded CBU location.');
-      // Return hardcoded CBU location for emulator
       return Position(
         latitude: _cbuLatitude,
         longitude: _cbuLongitude,
@@ -79,8 +73,6 @@ class LocationService {
         ),
       );
     } catch (e) {
-      print('Error getting location: $e. Using hardcoded CBU location.');
-      // Return hardcoded CBU location if there's an error (common on emulators)
       return Position(
         latitude: _cbuLatitude,
         longitude: _cbuLongitude,
@@ -129,15 +121,12 @@ class LocationService {
     double courseLatitude,
     double courseLongitude,
   ) async {
-    print('LocationService: Getting distance to course at lat=$courseLatitude, lng=$courseLongitude');
     Position? currentPosition = await getCurrentLocation();
 
     if (currentPosition == null) {
-      print('LocationService: Could not get current position');
       return null;
     }
 
-    print('LocationService: Current position: lat=${currentPosition.latitude}, lng=${currentPosition.longitude}');
 
     double miles = getDistanceInMiles(
       currentPosition.latitude,
@@ -145,8 +134,6 @@ class LocationService {
       courseLatitude,
       courseLongitude,
     );
-
-    print('LocationService: Distance calculated: $miles miles');
 
     return formatDistance(miles);
   }

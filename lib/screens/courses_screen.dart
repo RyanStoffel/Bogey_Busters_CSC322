@@ -52,11 +52,9 @@ class _CoursesScreenState extends State<CoursesScreen> {
           );
           latitude = position.latitude;
           longitude = position.longitude;
-        } else {
-          print('Location permission denied, using CBU location');
         }
       } catch (e) {
-        print('Error getting location: $e. Using CBU location');
+        print('Error getting location: $e');
       }
 
       List<Course> courses = await _overpassApiService.fetchNearbyCourses(

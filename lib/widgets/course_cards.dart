@@ -57,11 +57,8 @@ class _CourseCardState extends State<CourseCard> {
     if (widget.type == CourseCardType.courseCard && 
         widget.courseLatitude != null && 
         widget.courseLongitude != null) {
-      print('CourseCard initState: courseLat=${widget.courseLatitude}, courseLng=${widget.courseLongitude}');
       _calculateDistance();
-    } else {
-      print('CourseCard initState: NOT calculating distance - type=${widget.type}, lat=${widget.courseLatitude}, lng=${widget.courseLongitude}');
-    }
+    } 
   }
 
   Future<void> _calculateDistance() async {
@@ -69,13 +66,10 @@ class _CourseCardState extends State<CourseCard> {
       _isCalculatingDistance = true;
     });
 
-    print('CourseCard: Starting distance calculation...');
     final distanceInMiles = await _locationService.getDistanceToCourse(
       widget.courseLatitude!,
       widget.courseLongitude!,
     );
-
-    print('CourseCard: Distance result = $distanceInMiles');
 
     if (mounted) {
       setState(() {
