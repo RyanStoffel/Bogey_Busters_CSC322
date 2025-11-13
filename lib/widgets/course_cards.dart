@@ -261,8 +261,13 @@ class _CourseCardState extends State<CourseCard> {
   }
 
   Widget _buildButton(String text, {bool isOutlined = false}) {
-    final isPlayButton = text == 'Play';
-    final onPressed = isPlayButton && !isOutlined ? widget.onPlay : () {};
+    VoidCallback? onPressed;
+    
+    if (text == 'Preview') {
+      onPressed = widget.onPreview;
+    } else if (text == 'Play') {
+      onPressed = widget.onPlay;
+    }
     
     return isOutlined
         ? OutlinedButton(
