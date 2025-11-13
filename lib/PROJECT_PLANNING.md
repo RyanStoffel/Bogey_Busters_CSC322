@@ -145,15 +145,15 @@
 - [ ] Add recent rounds section to Home Screen
 - [ ] Design Settings Screen UI in Figma
 - [ ] Build Settings Screen layout
-- [ ] Add account settings section
+- [x] Add account settings section
 - [ ] Add app preferences (units, notifications)
 - [ ] Add delete account option
-- [ ] Design Profile Screen UI in Figma
-- [ ] Build Profile Screen with user info
+- [x] Design Profile Screen UI in Figma
+- [x] Build Profile Screen with user info
 - [ ] Add past rounds list view
 - [ ] Add statistics overview cards
 - [x] Add profile picture upload (in Onboarding Screen)
-- [ ] Add edit profile functionality
+- [x] Add edit profile functionality
 - [ ] Design Community Screen UI in Figma
 - [ ] Build Community Screen (placeholder for now)
 - [ ] Plan community features (leaderboards, friends, etc.)
@@ -171,10 +171,10 @@
 - [ ] Build Courses Screen with search bar
 - [ ] Implement course search by name
 - [ ] Implement course search by location
-- [ ] Add course list view with distance from user (currently placeholder distance)
+- [x] Add course list view with distance from user (currently placeholder distance)
 - [ ] Add course favorites functionality
-- [ ] Create Course Detail view
-- [ ] Display course info (holes, par, rating, slope)
+- [x] Create Course Detail view
+- [x] Display course info (holes, par, rating, slope)
 - [ ] Show course location on map
 
 ## PHASE 7: PLAY SCREEN & COURSE SELECTION
