@@ -205,6 +205,7 @@ class _CoursesScreenState extends State<CoursesScreen> {
                       label: Text('Load More (${courses.length - _displayCount} remaining)'),
                       style: ElevatedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                        foregroundColor: Colors.green,
                       ),
                     ),
                   ),

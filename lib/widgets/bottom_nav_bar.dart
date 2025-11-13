@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:go_router/go_router.dart';
 import 'package:golf_tracker_app/services/firestorage_service.dart';
+import 'package:golf_tracker_app/services/overpass_api_service.dart';
+import 'package:golf_tracker_app/services/location_service.dart';
+import 'package:geolocator/geolocator.dart';
 
 class BottomNavBar extends StatefulWidget {
   final int currentIndex;
@@ -17,11 +20,61 @@ class BottomNavBar extends StatefulWidget {
 
 class _BottomNavBarState extends State<BottomNavBar> {
   late Future<String?> _profileUrl;
+  final LocationService _locationService = LocationService();
+  final OverpassApiService _overpassApiService = OverpassApiService();
 
   @override
   void initState() {
     super.initState();
     _profileUrl = FirestorageService().getProfileImageUrl(FirebaseAuth.instance.currentUser?.uid ?? '');
+  }
+
+  Future<void> _navigateToClosestCourse(BuildContext context) async {
+    try {
+      // Get current location
+      final position = await _locationService.getCurrentLocation();
+      
+      if (position == null) {
+        return;
+      }
+
+      // Fetch nearby courses
+      final courses = await _overpassApiService.fetchNearbyCourses(
+        latitude: position.latitude,
+        longitude: position.longitude,
+        radiusInMiles: 25.0,
+      );
+
+      if (courses.isEmpty) {
+        return;
+      }
+
+      // Sort by distance and get the closest one
+      courses.sort((a, b) {
+        double distanceA = Geolocator.distanceBetween(
+          position.latitude,
+          position.longitude,
+          a.location.latitude!,
+          a.location.longitude!,
+        );
+        double distanceB = Geolocator.distanceBetween(
+          position.latitude,
+          position.longitude,
+          b.location.latitude!,
+          b.location.longitude!,
+        );
+        return distanceA.compareTo(distanceB);
+      });
+
+      final closestCourse = courses.first;
+      
+      // Navigate to the closest course
+      if (context.mounted) {
+        context.push('/courses/preview/${Uri.encodeComponent(closestCourse.courseId)}');
+      }
+    } catch (e) {
+      print('Error finding closest course: $e');
+    }
   }
 
   void _onTap(BuildContext context, int index) {
@@ -33,7 +86,7 @@ class _BottomNavBarState extends State<BottomNavBar> {
         context.go('/courses');
         break;
       case 2:
-        context.go('/in-round-screen'); //CHANGE BACK TO /play WHEN DONE
+        _navigateToClosestCourse(context);
         break;
       case 3:
         context.go('/profile');

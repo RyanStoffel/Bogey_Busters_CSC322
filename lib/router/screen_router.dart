@@ -144,7 +144,7 @@ final GoRouter screenRouter = GoRouter(
           currentIndex = 0;
         } else if (location.startsWith('/courses')) {
           currentIndex = 1;
-        } else if (location.startsWith('/in-round-screen')) { //CHANGE BACK TO /play WHEN DONE
+        } else if (location.startsWith('/preview/:courseId')) {
           currentIndex = 2;
         } else if (location.startsWith('/profile')) {
           currentIndex = 3;
