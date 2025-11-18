@@ -4,6 +4,7 @@ import 'package:golf_tracker_app/models/models.dart';
 import 'package:golf_tracker_app/widgets/course_cards.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
+import 'package:golf_tracker_app/utils/image_helper.dart';
 
 class CoursesScreen extends StatefulWidget {
   const CoursesScreen({super.key});
@@ -283,7 +284,7 @@ class _CoursesScreenState extends State<CoursesScreen> {
                     return CourseCard(
                       type: CourseCardType.courseCard,
                       courseName: course.courseName,
-                      courseImage: 'assets/images/default.png',
+                      courseImage: getRandomCourseImage(),
                       imageUrl: null, 
                       holes: 18, 
                       par: course.totalPar ?? 72, 

@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:go_router/go_router.dart';
 import 'package:golf_tracker_app/services/services.dart';
 import 'package:golf_tracker_app/widgets/course_cards.dart';
+import 'package:golf_tracker_app/utils/image_helper.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -214,7 +215,7 @@ class ProfileScreen extends StatelessWidget {
                             return CourseCard(
                               type: CourseCardType.courseScoreCard,
                               courseName: courseName,
-                              courseImage: 'assets/images/default.png',
+                              courseImage: getRandomCourseImage(),
                               holes: holes,
                               par: par,
                               totalScore: score,
