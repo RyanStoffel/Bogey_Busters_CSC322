@@ -10,7 +10,6 @@ import 'package:golf_tracker_app/screens/courses_screen.dart';
 import 'package:golf_tracker_app/screens/edit_profile_screen.dart';
 import 'package:golf_tracker_app/screens/friends_screen.dart';
 import 'package:golf_tracker_app/screens/onboarding_screen.dart';
-import 'package:golf_tracker_app/screens/play_screen.dart';
 import 'package:golf_tracker_app/screens/profile_screen.dart';
 import 'package:golf_tracker_app/screens/shell_screen.dart';
 import 'package:golf_tracker_app/screens/splash_screen.dart';
@@ -69,7 +68,7 @@ final GoRouter screenRouter = GoRouter(
           // If we can't check, assume they need onboarding
           return '/onboarding';
         }
-        return '/play';
+        return '/courses';
       }
 
       // If not verified and not on verify-email page
@@ -189,23 +188,23 @@ final GoRouter screenRouter = GoRouter(
             ),
           ],
         ),
-        GoRoute(
-          path: '/play',
-          pageBuilder: (context, state) => NoTransitionPage(
-            child: const PlayScreen(),
-          ),
-          routes: [
-            GoRoute(
-              path: 'course/:courseId',
-              pageBuilder: (context, state) {
-                final courseId = Uri.decodeComponent(state.pathParameters['courseId']!);
-                return NoTransitionPage(
-                  child: CoursePreviewScreen(courseId: courseId),
-                );
-              },
-            ),
-          ],
-        ),
+        // GoRoute(
+        //   path: '/play',
+        //   pageBuilder: (context, state) => NoTransitionPage(
+        //     child: const PlayScreen(),
+        //   ),
+        //   routes: [
+        //     GoRoute(
+        //       path: 'course/:courseId',
+        //       pageBuilder: (context, state) {
+        //         final courseId = Uri.decodeComponent(state.pathParameters['courseId']!);
+        //         return NoTransitionPage(
+        //           child: CoursePreviewScreen(courseId: courseId),
+        //         );
+        //       },
+        //     ),
+        //   ],
+        // ),
         GoRoute(
           path: '/profile',
           pageBuilder: (context, state) => NoTransitionPage(

@@ -86,7 +86,7 @@ class _BottomNavBarState extends State<BottomNavBar> {
         context.go('/courses');
         break;
       case 2:
-        context.go('/in-round-screen');
+        _navigateToClosestCourse(context);
         break;
       case 3:
         context.go('/profile');
