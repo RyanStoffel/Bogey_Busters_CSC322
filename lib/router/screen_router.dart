@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:go_router/go_router.dart';
 import 'package:golf_tracker_app/models/course.dart';
 import 'package:golf_tracker_app/screens/auth_screen.dart';
+import 'package:golf_tracker_app/screens/course_details_selection_screen.dart';
 import 'package:golf_tracker_app/screens/course_preview_screen.dart';
 import 'package:golf_tracker_app/screens/courses_screen.dart';
 import 'package:golf_tracker_app/screens/edit_profile_screen.dart';
@@ -129,10 +130,19 @@ final GoRouter screenRouter = GoRouter(
       ),
     ),
     GoRoute(
-      path: '/in-round',
+      path: '/course-details',
       builder: (context, state) {
         final course = state.extra as Course;
-        return InRoundScreen(course: course);
+        return CourseDetailsSelectionScreen(course: course);
+      },
+    ),
+    GoRoute(
+      path: '/in-round',
+      builder: (context, state) {
+        final data = state.extra as Map<String, dynamic>;
+        final course = data['course'] as Course;
+        final teeColor = data['teeColor'] as String;
+        return InRoundScreen(course: course, teeColor: teeColor);
       },
     ),
     ShellRoute(

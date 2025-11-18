@@ -303,15 +303,13 @@ class _CoursePreviewScreenState extends State<CoursePreviewScreen> {
             final isEven = index % 2 == 0;
 
             // Get white tee yardage
-            int yards = 0;
+            int? yards;
             if (hole.teeBoxes != null && hole.teeBoxes!.isNotEmpty) {
               final whiteTee = hole.teeBoxes!.firstWhere(
                 (tee) => tee.tee.toLowerCase() == 'white',
                 orElse: () => hole.teeBoxes!.first,
               );
-              // Note: Your TeeBox model doesn't have yards, you may need to calculate
-              // distance or add yards to the TeeBox model
-              yards = 0; // Placeholder
+              yards = whiteTee.yards;
             }
 
             return Container(
@@ -355,7 +353,7 @@ class _CoursePreviewScreenState extends State<CoursePreviewScreen> {
                   Expanded(
                     flex: 1,
                     child: Text(
-                      yards > 0 ? yards.toString() : 'N/A',
+                      yards.toString(),
                       textAlign: TextAlign.center,
                       style: const TextStyle(
                         fontSize: 14,

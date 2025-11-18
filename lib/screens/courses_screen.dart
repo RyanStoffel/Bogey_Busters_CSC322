@@ -289,13 +289,14 @@ class _CoursesScreenState extends State<CoursesScreen> {
                       par: course.totalPar ?? 72, 
                       distance: _formatAddress(course),
                       hasCarts: false, 
+                      course: course,  // ADD THIS LINE - pass the full course object
                       courseLatitude: course.location.latitude,
                       courseLongitude: course.location.longitude,
                       onPreview: () {
                         context.push('/courses/preview/${Uri.encodeComponent(course.courseId)}');
                       },
                       onPlay: () {
-                        context.push('/in-round', extra: course);
+                        context.push('/course-details', extra: course);  // CHANGE THIS LINE
                       },
                     );
                   },

@@ -1,4 +1,3 @@
-
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:golf_tracker_app/models/models.dart';
@@ -178,6 +177,7 @@ class OverpassApiService {
   Course _parseCourseDetails(Map<String, dynamic> data, String courseId) {
     final elements = data['elements'] as List<dynamic>? ?? [];
 
+    // Find the main course element
     Map<String, dynamic>? courseElement;
     for (var element in elements) {
       if (element['id'].toString() == courseId.replaceAll(RegExp(r'^(node|way|relation)/'), '')) {
@@ -203,11 +203,22 @@ class OverpassApiService {
       lon = courseElement['lon'] as double;
     }
 
-    final holes = _extractHoles(elements);
+    // Create a map of node IDs to coordinates
+    final Map<int, Map<String, double>> nodeCoordinates = {};
+    for (var element in elements) {
+      if (element['type'] == 'node') {
+        final id = element['id'] as int;
+        final nodeLat = element['lat'] as double;
+        final nodeLon = element['lon'] as double;
+        nodeCoordinates[id] = {'lat': nodeLat, 'lon': nodeLon};
+      }
+    }
+
+    final holes = _extractHolesFromWays(elements, nodeCoordinates);
 
     int? totalPar;
     if (holes.isNotEmpty) {
-      totalPar = holes.fold<int>(0, (sumOfPars, hole) => sumOfPars + (hole.par ?? 0));
+      totalPar = holes.fold<int>(0, (sum, hole) => sum + (hole.par ?? 0));
     }
 
     return Course(
@@ -226,79 +237,157 @@ class OverpassApiService {
     );
   }
 
-  List<Hole> _extractHoles(List<dynamic> elements) {
+  List<Hole> _extractHolesFromWays(
+    List<dynamic> elements,
+    Map<int, Map<String, double>> nodeCoordinates,
+  ) {
     try {
       final Map<int, Hole> holes = {};
-      final List<TeeBox> unassignedTees = [];
-      final List<CoordinatePoint> unassignedGreens = [];
 
-      // First pass to find hole markers
+      // Group elements by hole number
+      final Map<int, List<Map<String, dynamic>>> holeElements = {};
+
       for (var element in elements) {
         final tags = element['tags'] as Map<String, dynamic>? ?? {};
+        
+        // Get hole number from either 'hole' or 'ref' tag
+        String? holeNumberStr = tags['hole'] as String?;
+        if (holeNumberStr == null) {
+          holeNumberStr = tags['ref'] as String?;
+        }
 
-        if (tags['golf'] == 'hole') {
-          final holeNumber = int.tryParse(tags['ref']?.toString() ?? '');
+        if (holeNumberStr != null) {
+          final holeNumber = int.tryParse(holeNumberStr);
           if (holeNumber != null) {
-            int? par = int.tryParse(tags['par']?.toString() ?? '');
-            final handicap = int.tryParse(tags['handicap']?.toString() ?? '');
-
-            holes[holeNumber] = Hole(
-              holeNumber: holeNumber,
-              par: par,
-              handicap: handicap,
-              teeBoxes: [],
-              greenCoordinates: [],
-              greenLocation: null,
-              hazards: [],
-            );
+            holeElements.putIfAbsent(holeNumber, () => []);
+            holeElements[holeNumber]!.add(element);
           }
         }
       }
 
-      // Second pass to find tee boxes, greens, hazards, fairways, and rough
-      for (var element in elements) {
-        final tags = element['tags'] as Map<String, dynamic>? ?? {};
+      // Process each hole
+      for (var holeNumber in holeElements.keys) {
+        final elements = holeElements[holeNumber]!;
 
-        if (tags['golf'] == 'tee') {
-          final holeNumber = int.tryParse(tags['ref']?.toString() ?? '');
-          final tee = tags['tee'] as String? ?? 'Unkown';
+        // Extract hole metadata, tees, and greens
+        int? par;
+        int? handicap;
+        List<TeeBox> teeBoxes = [];
+        CoordinatePoint? greenLocation;
+        List<CoordinatePoint>? greenCoordinates;
 
-          double? lat = element['lat'] as double?;
-          double? lon = element['lon'] as double?;
+        for (var element in elements) {
+          final tags = element['tags'] as Map<String, dynamic>? ?? {};
+          final golfType = tags['golf'] as String?;
 
-          final teeBox = TeeBox(
-            tee: tee,
-            location: CoordinatePoint(latitude: lat, longitude: lon),
-          );
+          // Get par and handicap from golf:hole elements or any element with these tags
+          if (tags.containsKey('par') && par == null) {
+            par = int.tryParse(tags['par']?.toString() ?? '');
+          }
+          if (tags.containsKey('handicap') && handicap == null) {
+            handicap = int.tryParse(tags['handicap']?.toString() ?? '');
+          }
 
-          if (holeNumber != null && holes.containsKey(holeNumber)) {
-            holes[holeNumber]!.teeBoxes?.add(teeBox);
-          } else {
-            unassignedTees.add(teeBox);
+          if (golfType == 'tee') {
+            final teeColor = tags['tee'] as String? ?? 'unknown';
+            final coords = _calculateCenterFromWay(element, nodeCoordinates);
+            
+            // Try to get yardage from tags
+            int? yards;
+            if (tags.containsKey('yards')) {
+              yards = int.tryParse(tags['yards']?.toString() ?? '');
+            } else if (tags.containsKey('distance')) {
+              yards = int.tryParse(tags['distance']?.toString() ?? '');
+            }
+            
+            if (coords != null) {
+              teeBoxes.add(TeeBox(
+                tee: teeColor,
+                location: coords,
+                yards: yards,
+                par: par,
+                handicap: handicap,
+              ));
+            }
+          } else if (golfType == 'green') {
+            final coords = _calculateCenterFromWay(element, nodeCoordinates);
+            if (coords != null) {
+              greenLocation = coords;
+            }
+
+            // Also get polygon coordinates
+            final polyCoords = _getPolygonCoordinates(element, nodeCoordinates);
+            if (polyCoords != null && polyCoords.isNotEmpty) {
+              greenCoordinates = polyCoords;
+            }
           }
         }
 
-        if (tags['golf'] == 'green') {
-          final holeNumber = int.tryParse(tags['ref']?.toString() ?? '');
-
-          double? lat = element['lat'] as double?;
-          double? lon = element['lon'] as double?;
-
-          final greenCoordinatePoint = CoordinatePoint(latitude: lat, longitude: lon);
-
-          if (holeNumber != null && holes.containsKey(holeNumber)) {
-            holes[holeNumber]!.greenLocation = greenCoordinatePoint;
-          } else {
-            unassignedGreens.add(greenCoordinatePoint);
-          }
-        }
+        holes[holeNumber] = Hole(
+          holeNumber: holeNumber,
+          par: par,
+          handicap: handicap,
+          teeBoxes: teeBoxes.isEmpty ? null : teeBoxes,
+          greenLocation: greenLocation,
+          greenCoordinates: greenCoordinates,
+        );
       }
 
       final holesList = holes.values.toList();
       holesList.sort((a, b) => a.holeNumber.compareTo(b.holeNumber));
       return holesList;
     } catch (e) {
-      throw Exception('Error extracting holes from response.');
+      throw Exception('Error extracting holes from response: $e');
     }
+  }
+
+  CoordinatePoint? _calculateCenterFromWay(
+    Map<String, dynamic> element,
+    Map<int, Map<String, double>> nodeCoordinates,
+  ) {
+    final nodes = element['nodes'] as List<dynamic>?;
+    if (nodes == null || nodes.isEmpty) return null;
+
+    double latSum = 0;
+    double lonSum = 0;
+    int validNodes = 0;
+
+    for (var nodeId in nodes) {
+      final coords = nodeCoordinates[nodeId as int];
+      if (coords != null) {
+        latSum += coords['lat']!;
+        lonSum += coords['lon']!;
+        validNodes++;
+      }
+    }
+
+    if (validNodes == 0) return null;
+
+    return CoordinatePoint(
+      latitude: latSum / validNodes,
+      longitude: lonSum / validNodes,
+    );
+  }
+
+  List<CoordinatePoint>? _getPolygonCoordinates(
+    Map<String, dynamic> element,
+    Map<int, Map<String, double>> nodeCoordinates,
+  ) {
+    final nodes = element['nodes'] as List<dynamic>?;
+    if (nodes == null || nodes.isEmpty) return null;
+
+    final List<CoordinatePoint> coordinates = [];
+
+    for (var nodeId in nodes) {
+      final coords = nodeCoordinates[nodeId as int];
+      if (coords != null) {
+        coordinates.add(CoordinatePoint(
+          latitude: coords['lat']!,
+          longitude: coords['lon']!,
+        ));
+      }
+    }
+
+    return coordinates.isEmpty ? null : coordinates;
   }
 }
