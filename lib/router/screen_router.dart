@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:go_router/go_router.dart';
+import 'package:golf_tracker_app/models/course.dart';
 import 'package:golf_tracker_app/screens/auth_screen.dart';
 import 'package:golf_tracker_app/screens/course_preview_screen.dart';
 import 'package:golf_tracker_app/screens/courses_screen.dart';
@@ -122,18 +123,17 @@ final GoRouter screenRouter = GoRouter(
       },
     ),
     GoRoute(
-      path: '/in-round-screen',
-      pageBuilder: (context, state) {
-        return NoTransitionPage(
-          child: InRoundScreen(),
-        );
-      },
-    ),
-    GoRoute(
       path: '/onboarding',
       pageBuilder: (context, state) => NoTransitionPage(
         child: const OnboardingScreen(),
       ),
+    ),
+    GoRoute(
+      path: '/in-round',
+      builder: (context, state) {
+        final course = state.extra as Course;
+        return InRoundScreen(course: course);
+      },
     ),
     ShellRoute(
       builder: (context, state, body) {
@@ -144,7 +144,7 @@ final GoRouter screenRouter = GoRouter(
           currentIndex = 0;
         } else if (location.startsWith('/courses')) {
           currentIndex = 1;
-        } else if (location.startsWith('/preview/:courseId')) {
+        } else if (location.startsWith('/in-round-screen')) {
           currentIndex = 2;
         } else if (location.startsWith('/profile')) {
           currentIndex = 3;

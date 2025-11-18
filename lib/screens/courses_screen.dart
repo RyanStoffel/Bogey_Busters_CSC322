@@ -14,13 +14,29 @@ class CoursesScreen extends StatefulWidget {
 
 class _CoursesScreenState extends State<CoursesScreen> {
   final OverpassApiService _overpassApiService = OverpassApiService();
+  final TextEditingController _searchController = TextEditingController();
   late Future<List<Course>> _courses;
-  int _displayCount = 5; // Number of courses to display initially
+  int _displayCount = 5;
+  String _searchQuery = '';
 
   @override
   void initState() {
     super.initState();
     _courses = _loadCourses();
+    _searchController.addListener(_onSearchChanged);
+  }
+
+  @override
+  void dispose() {
+    _searchController.removeListener(_onSearchChanged);
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _onSearchChanged() {
+    setState(() {
+      _searchQuery = _searchController.text.toLowerCase();
+    });
   }
 
   void _loadMoreCourses() {
@@ -29,9 +45,26 @@ class _CoursesScreenState extends State<CoursesScreen> {
     });
   }
 
+  List<Course> _filterCourses(List<Course> courses) {
+    if (_searchQuery.isEmpty) {
+      return courses;
+    }
+    
+    return courses.where((course) {
+      final courseName = course.courseName.toLowerCase();
+      final address = _formatAddress(course).toLowerCase();
+      final city = course.courseCity?.toLowerCase() ?? '';
+      final state = course.courseState?.toLowerCase() ?? '';
+      
+      return courseName.contains(_searchQuery) ||
+             address.contains(_searchQuery) ||
+             city.contains(_searchQuery) ||
+             state.contains(_searchQuery);
+    }).toList();
+  }
+
   Future<List<Course>> _loadCourses() async {
     try {
-      // Hardcoded CBU location as fallback
       const double cbuLatitude = 33.929483;
       const double cbuLongitude = -117.286400;
       
@@ -64,7 +97,6 @@ class _CoursesScreenState extends State<CoursesScreen> {
         radiusInMiles: 25.0,
       );
 
-      // Sort courses by distance from current location (closest first)
       courses.sort((a, b) {
         double distanceA = Geolocator.distanceBetween(
           latitude,
@@ -108,139 +140,170 @@ class _CoursesScreenState extends State<CoursesScreen> {
             icon: const Icon(Icons.refresh),
             onPressed: () {
               setState(() {
-                _displayCount = 15; // Reset display count
+                _displayCount = 15;
                 _courses = _loadCourses();
+                _searchController.clear();
               });
             },
           ),
         ],
       ),
-      body: FutureBuilder<List<Course>>(
-        future: _courses,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  CircularProgressIndicator(color: Colors.green,),
-                  SizedBox(height: 16),
-                  Text('Loading nearby courses...'),
-                ],
-              ),
-            );
-          }
-
-          if (snapshot.hasError) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.error_outline, size: 48, color: Colors.red),
-                    const SizedBox(height: 16),
-                    Text(
-                      'Error loading courses',
-                      style: Theme.of(context).textTheme.titleLarge,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      '${snapshot.error}',
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                    const SizedBox(height: 16),
-                    ElevatedButton.icon(
-                      onPressed: () {
-                        setState(() {
-                          _courses = _loadCourses();
-                        });
-                      },
-                      icon: const Icon(Icons.refresh),
-                      label: const Text('Retry'),
-                    ),
-                  ],
+      body: Column(
+        children: [
+          // Search Bar
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: 'Search courses...',
+                prefixIcon: const Icon(Icons.search),
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          _searchController.clear();
+                        },
+                      )
+                    : null,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
                 ),
+                filled: true,
+                fillColor: Colors.grey[100],
               ),
-            );
-          }
-
-          final courses = snapshot.data ?? [];
-          
-          if (courses.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.golf_course, size: 64, color: Colors.grey),
-                  const SizedBox(height: 16),
-                  Text(
-                    'No courses found nearby',
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                  const SizedBox(height: 8),
-                  const Text('Try adjusting your search radius'),
-                ],
-              ),
-            );
-          }
-
-          // Limit the displayed courses to _displayCount
-          final displayedCourses = courses.take(_displayCount).toList();
-          final hasMore = courses.length > _displayCount;
-
-          return ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: displayedCourses.length + (hasMore ? 1 : 0),
-            itemBuilder: (context, index) {
-              // Show "Load More" button as the last item if there are more courses
-              if (index == displayedCourses.length) {
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 16.0),
-                  child: Center(
-                    child: ElevatedButton.icon(
-                      onPressed: _loadMoreCourses,
-                      icon: const Icon(Icons.arrow_downward),
-                      label: Text('Load More (${courses.length - _displayCount} remaining)'),
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                        foregroundColor: Colors.green,
-                      ),
-                    ),
-                  ),
-                );
-              }
-
-              final course = displayedCourses[index];
-              
-              return CourseCard(
-                type: CourseCardType.courseCard,
-                courseName: course.courseName,
-                courseImage: 'assets/images/default.png',
-                imageUrl: null, 
-                holes: 18, 
-                par: course.totalPar ?? 72, 
-                distance: _formatAddress(course),
-                hasCarts: false, 
-                courseLatitude: course.location.latitude,
-                courseLongitude: course.location.longitude,
-                onPreview: () {
-                  // Navigate to course preview screen with courseId
-                  context.push('/courses/preview/${Uri.encodeComponent(course.courseId)}');
-                },
-                onPlay: () {
-                  // TODO: Implement start round functionality
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Starting round at ${course.courseName}'),
+            ),
+          ),
+          // Courses List
+          Expanded(
+            child: FutureBuilder<List<Course>>(
+              future: _courses,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        CircularProgressIndicator(color: Colors.green),
+                        SizedBox(height: 16),
+                        Text('Loading nearby courses...'),
+                      ],
                     ),
                   );
-                },
-              );
-            },
-          );
-        },
+                }
+
+                if (snapshot.hasError) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.error_outline, size: 48, color: Colors.red),
+                          const SizedBox(height: 16),
+                          Text(
+                            'Error loading courses',
+                            style: Theme.of(context).textTheme.titleLarge,
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            '${snapshot.error}',
+                            textAlign: TextAlign.center,
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
+                          const SizedBox(height: 16),
+                          ElevatedButton.icon(
+                            onPressed: () {
+                              setState(() {
+                                _courses = _loadCourses();
+                              });
+                            },
+                            icon: const Icon(Icons.refresh),
+                            label: const Text('Retry'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }
+
+                final allCourses = snapshot.data ?? [];
+                final filteredCourses = _filterCourses(allCourses);
+                
+                if (filteredCourses.isEmpty) {
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.golf_course, size: 64, color: Colors.grey),
+                        const SizedBox(height: 16),
+                        Text(
+                          _searchQuery.isEmpty 
+                              ? 'No courses found nearby'
+                              : 'No courses match your search',
+                          style: Theme.of(context).textTheme.titleLarge,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          _searchQuery.isEmpty
+                              ? 'Try adjusting your search radius'
+                              : 'Try a different search term',
+                        ),
+                      ],
+                    ),
+                  );
+                }
+
+                final displayedCourses = filteredCourses.take(_displayCount).toList();
+                final hasMore = filteredCourses.length > _displayCount;
+
+                return ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: displayedCourses.length + (hasMore ? 1 : 0),
+                  itemBuilder: (context, index) {
+                    if (index == displayedCourses.length) {
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 16.0),
+                        child: Center(
+                          child: ElevatedButton.icon(
+                            onPressed: _loadMoreCourses,
+                            icon: const Icon(Icons.arrow_downward),
+                            label: Text('Load More (${filteredCourses.length - _displayCount} remaining)'),
+                            style: ElevatedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                              foregroundColor: Colors.green,
+                            ),
+                          ),
+                        ),
+                      );
+                    }
+
+                    final course = displayedCourses[index];
+                    
+                    return CourseCard(
+                      type: CourseCardType.courseCard,
+                      courseName: course.courseName,
+                      courseImage: 'assets/images/default.png',
+                      imageUrl: null, 
+                      holes: 18, 
+                      par: course.totalPar ?? 72, 
+                      distance: _formatAddress(course),
+                      hasCarts: false, 
+                      courseLatitude: course.location.latitude,
+                      courseLongitude: course.location.longitude,
+                      onPreview: () {
+                        context.push('/courses/preview/${Uri.encodeComponent(course.courseId)}');
+                      },
+                      onPlay: () {
+                        context.push('/in-round', extra: course);
+                      },
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
