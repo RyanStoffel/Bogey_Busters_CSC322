@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:golf_tracker_app/models/models.dart';
 import 'package:golf_tracker_app/services/overpass_api_service.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:math' as math;
 
 class InRoundScreen extends StatefulWidget {
@@ -31,6 +33,9 @@ class _InRoundScreenState extends State<InRoundScreen> {
   // Score tracking for current hole
   int? _currentScore;
   int? _currentPutts;
+  
+  // Track scores for all holes (holeNumber -> score)
+  Map<int, int> _holeScores = {};
 
   @override
   void initState() {
@@ -490,7 +495,8 @@ class _InRoundScreenState extends State<InRoundScreen> {
   }
 
   void _finishHole() {
-    // TODO: Save hole score to database
+    // Save hole score
+    _holeScores[currentHole!.holeNumber] = _currentScore!;
     print('Hole ${currentHole!.holeNumber}: Score=$_currentScore, Putts=$_currentPutts');
     
     // Move to next hole
@@ -508,15 +514,51 @@ class _InRoundScreenState extends State<InRoundScreen> {
   }
 
   void _showRoundCompleteDialog() {
+    // Calculate total score
+    int totalScore = 0;
+    _holeScores.forEach((holeNumber, score) {
+      totalScore += score;
+    });
+
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
         title: const Text('Round Complete!'),
-        content: const Text('Congratulations on completing your round!'),
+        content: Text('Congratulations on completing your round!\nTotal Score: $totalScore'),
         actions: [
           TextButton(
-            onPressed: () {
+            onPressed: () async {
+              // Save to Firebase
+              try {
+                final user = FirebaseAuth.instance.currentUser;
+                if (user != null) {
+                  // Calculate total par
+                  int totalPar = 0;
+                  if (_holes != null) {
+                    for (var hole in _holes!) {
+                      totalPar += hole.par ?? 4;
+                    }
+                  }
+
+                  await FirebaseFirestore.instance
+                      .collection('users')
+                      .doc(user.uid)
+                      .collection('rounds')
+                      .add({
+                    'courseName': widget.course.courseName,
+                    'courseId': widget.course.courseId,
+                    'score': totalScore,
+                    'holes': _holes?.length ?? 18,
+                    'par': totalPar > 0 ? totalPar : 72,
+                    'timestamp': FieldValue.serverTimestamp(),
+                  });
+                }
+              } catch (e) {
+                print('Error saving round: $e');
+              }
+              
+              if (!context.mounted) return;
               Navigator.pop(context);
               Navigator.pop(context);
             },

@@ -407,10 +407,26 @@ class _CoursePreviewScreenState extends State<CoursePreviewScreen> {
   }
 
   int _calculateTotalYards() {
-    // Note: You'll need to add yards calculation logic
-    // This depends on how you want to calculate distance from tee to green
-    // For now returning 0 as placeholder
-    return 0;
+    if (_course?.holes == null || _course!.holes!.isEmpty) {
+      return 0;
+    }
+
+    int totalYards = 0;
+    
+    for (var hole in _course!.holes!) {
+      if (hole.teeBoxes != null && hole.teeBoxes!.isNotEmpty) {
+        final whiteTee = hole.teeBoxes!.firstWhere(
+          (tee) => tee.tee.toLowerCase() == 'white',
+          orElse: () => hole.teeBoxes!.first,
+        );
+        
+        if (whiteTee.yards != null) {
+          totalYards += whiteTee.yards!;
+        }
+      }
+    }
+    
+    return totalYards;
   }
 
   Widget _buildStatColumn(String label, String value) {

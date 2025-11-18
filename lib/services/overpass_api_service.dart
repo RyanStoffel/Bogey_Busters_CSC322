@@ -86,14 +86,16 @@ class OverpassApiService {
 
   String _buildCourseDetailsQuery(String courseId) {
     final cleanId = courseId.split('/');
-    print(cleanId[1]);
+    final type = cleanId[0];
+    final id = cleanId[1];
+    print('Fetching $type/$id');
     return '''
       [out:json][timeout:$_timeoutSeconds];
       // Get the golf course way
-      way(${cleanId[1]});
+      $type($id);
       out center tags;
       // Store it for later reference
-      way(${cleanId[1]})->.golfCourse;
+      $type($id)->.golfCourse;
       // Convert the way to an area for searching
       .golfCourse map_to_area->.searchArea;
       // Find all features within the golf course area

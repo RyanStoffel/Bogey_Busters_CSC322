@@ -125,8 +125,15 @@ class _CourseCardState extends State<CourseCard> {
                          style: _textStyle(14, FontWeight.w500)),
                   ],
                 )
-              : Text('${widget.courseName} - ${widget.holes} holes Par ${widget.par}', 
-                     style: _textStyle(14, FontWeight.w600)),
+              : Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(widget.courseName, style: _textStyle(18, FontWeight.w800)),
+                  //const SizedBox(height: 4),
+                  Text('${widget.holes} holes Par ${widget.par}', style: _textStyle(15, FontWeight.w400)),
+                ],
+              ),
+                     
     );
   }
 
@@ -253,9 +260,9 @@ class _CourseCardState extends State<CourseCard> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: _textStyle(12, FontWeight.w400)),
+        Text(label, style: _textStyle(16, FontWeight.w400)),
         const SizedBox(height: 4),
-        Text(value, style: _textStyle(18, FontWeight.w700)),
+        Text(value, style: _textStyle(20, FontWeight.w700)),
       ],
     );
   }

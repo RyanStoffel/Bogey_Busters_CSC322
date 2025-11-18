@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:go_router/go_router.dart';
 import 'package:golf_tracker_app/services/services.dart';
+import 'package:golf_tracker_app/widgets/course_cards.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -138,6 +139,93 @@ class ProfileScreen extends StatelessWidget {
                     ),
                   );
                 },
+              ),
+              // Rounds History Section
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Round History',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF2D3E1F),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    StreamBuilder<QuerySnapshot>(
+                      stream: FirebaseFirestore.instance
+                          .collection('users')
+                          .doc(user?.uid)
+                          .collection('rounds')
+                          .orderBy('timestamp', descending: true)
+                          .snapshots(),
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState == ConnectionState.waiting) {
+                          return const Center(
+                            child: Padding(
+                              padding: EdgeInsets.all(32.0),
+                              child: CircularProgressIndicator(),
+                            ),
+                          );
+                        }
+
+                        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                          return Center(
+                            child: Padding(
+                              padding: const EdgeInsets.all(32.0),
+                              child: Column(
+                                children: [
+                                  Icon(
+                                    Icons.golf_course,
+                                    size: 64,
+                                    color: Colors.grey[400],
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    'No rounds played yet',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      color: Colors.grey[600],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        }
+
+                        final rounds = snapshot.data!.docs;
+
+                        return ListView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: rounds.length,
+                          itemBuilder: (context, index) {
+                            final roundData = rounds[index].data() as Map<String, dynamic>;
+                            final courseName = roundData['courseName'] ?? 'Unknown Course';
+                            final score = roundData['score'] ?? 0;
+                            final holes = roundData['holes'] ?? 18;
+                            final par = roundData['par'] ?? 72;
+                            final relativeToPar = score - par;
+
+                            return CourseCard(
+                              type: CourseCardType.courseScoreCard,
+                              courseName: courseName,
+                              courseImage: 'assets/images/default.png',
+                              holes: holes,
+                              par: par,
+                              totalScore: score,
+                              relativeToPar: relativeToPar,
+                            );
+                          },
+                        );
+                      },
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
