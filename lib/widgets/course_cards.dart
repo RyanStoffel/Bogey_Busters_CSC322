@@ -14,7 +14,6 @@ class CourseCard extends StatefulWidget {
   final int? totalScore;
   final int? relativeToPar;
   final String? friendName;
-  final bool? hasCarts;
   final Course? course;
   final VoidCallback? onPreview;
   final VoidCallback? onPlay;
@@ -33,7 +32,6 @@ class CourseCard extends StatefulWidget {
     this.totalScore,
     this.relativeToPar,
     this.friendName,
-    this.hasCarts,
     this.course,
     this.onPreview,
     this.onPlay,
@@ -235,7 +233,6 @@ class _CourseCardState extends State<CourseCard> {
               children: [
                 Text('Par ${widget.par}', style: _textStyle(16, FontWeight.w600)),
                 Text('${widget.holes} holes', style: _textStyle(14, FontWeight.w400)),
-                Text(widget.hasCarts! ? 'Carts' : 'No Carts', style: _textStyle(14, FontWeight.w400)),
                 const SizedBox(height: 12),
                 Row(
                   children: [

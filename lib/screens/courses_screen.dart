@@ -116,24 +116,24 @@ class _CoursesScreenState extends State<CoursesScreen> {
         return distanceA.compareTo(distanceB);
       });
 
-      // Now fetch full details for each course (holes, tee boxes, par, yardage, etc.)
-      print('Fetching detailed information for ${basicCourses.length} courses...');
-      List<Course> detailedCourses = [];
+      // Now fetch full details for all courses IN PARALLEL (much faster!)
+      print('Fetching detailed information for ${basicCourses.length} courses in parallel...');
       
-      for (int i = 0; i < basicCourses.length; i++) {
-        final basicCourse = basicCourses[i];
-        print('Loading details for ${basicCourse.courseName} (${i + 1}/${basicCourses.length})');
-        
+      // Create a list of futures for all course detail fetches
+      final detailFutures = basicCourses.map((basicCourse) async {
         try {
+          print('Loading details for ${basicCourse.courseName}');
           // Fetch complete course details including holes and tee boxes
-          final detailedCourse = await _overpassApiService.fetchCourseDetails(basicCourse.courseId);
-          detailedCourses.add(detailedCourse);
+          return await _overpassApiService.fetchCourseDetails(basicCourse.courseId);
         } catch (e) {
           // If fetching details fails for a course, keep the basic info
           print('Failed to fetch details for ${basicCourse.courseName}: $e');
-          detailedCourses.add(basicCourse);
+          return basicCourse;
         }
-      }
+      }).toList();
+      
+      // Wait for all course details to be fetched at once
+      final detailedCourses = await Future.wait(detailFutures);
 
       print('Successfully loaded ${detailedCourses.length} courses with full details');
       return detailedCourses;
@@ -313,10 +313,9 @@ class _CoursesScreenState extends State<CoursesScreen> {
                       courseName: course.courseName,
                       courseImage: getRandomCourseImage(),
                       imageUrl: null, 
-                      holes: 18, 
+                      holes: course.holes?.length ?? 18, 
                       par: course.totalPar ?? 72, 
                       distance: _formatAddress(course),
-                      hasCarts: false, 
                       course: course,  // ADD THIS LINE - pass the full course object
                       courseLatitude: course.location.latitude,
                       courseLongitude: course.location.longitude,
