@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:golf_tracker_app/services/overpass_api_service.dart';
 import 'package:golf_tracker_app/models/models.dart';
+import 'package:golf_tracker_app/utils/image_helper.dart';
 
 class CoursePreviewScreen extends StatefulWidget {
   final String courseId;
@@ -134,7 +135,16 @@ class _CoursePreviewScreenState extends State<CoursePreviewScreen> {
               width: double.infinity,
               height: 250,
               color: Colors.grey[300],
-              child: Icon(Icons.golf_course, size: 80, color: Colors.grey[600]),
+              child: Image.asset(
+                getRandomCourseImage(),
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) {
+                  return Container(
+                    color: Colors.grey[300],
+                    child: Icon(Icons.golf_course, size: 50, color: Colors.grey[600]),
+                  );
+                },
+              ),
             ),
             Padding(
               padding: const EdgeInsets.all(20.0),

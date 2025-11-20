@@ -1,5 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:flutter/foundation.dart';
 import 'package:go_router/go_router.dart';
 import 'package:golf_tracker_app/models/course.dart';
@@ -15,10 +15,14 @@ import 'package:golf_tracker_app/screens/shell_screen.dart';
 import 'package:golf_tracker_app/screens/splash_screen.dart';
 import 'package:golf_tracker_app/screens/verify_email_screen.dart';
 import 'package:golf_tracker_app/screens/in_round_screen.dart';
+import 'package:golf_tracker_app/screens/end_of_round_screen.dart';
+import 'package:golf_tracker_app/models/models.dart';
 
 class AuthNotifier extends ChangeNotifier {
   AuthNotifier() {
-    FirebaseAuth.instance.authStateChanges().listen((User? user) {
+    firebase_auth.FirebaseAuth.instance
+        .authStateChanges()
+        .listen((firebase_auth.User? user) {
       notifyListeners();
     });
   }
@@ -30,7 +34,7 @@ final GoRouter screenRouter = GoRouter(
   initialLocation: '/',
   refreshListenable: _authNotifier,
   redirect: (context, state) async {
-    final user = FirebaseAuth.instance.currentUser;
+    final user = firebase_auth.FirebaseAuth.instance.currentUser;
     final isOnSplashScreen = state.uri.path == '/';
     final isOnAuthScreen = state.uri.path == '/auth';
     final isOnVerifyEmail = state.uri.path == '/verify-email';
@@ -53,8 +57,10 @@ final GoRouter screenRouter = GoRouter(
 
         // Check onboarding status
         try {
-          final doc =
-              await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+          final doc = await FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .get();
 
           if (doc.exists) {
             final data = doc.data();
@@ -79,8 +85,10 @@ final GoRouter screenRouter = GoRouter(
       // If verified but not on onboarding page, check if onboarding is needed
       if (user.emailVerified && !isOnOnboarding) {
         try {
-          final doc =
-              await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+          final doc = await FirebaseFirestore.instance
+              .collection('users')
+              .doc(user.uid)
+              .get();
 
           if (doc.exists) {
             final data = doc.data();
@@ -116,7 +124,7 @@ final GoRouter screenRouter = GoRouter(
     GoRoute(
       path: '/verify-email',
       pageBuilder: (context, state) {
-        final user = FirebaseAuth.instance.currentUser;
+        final user = firebase_auth.FirebaseAuth.instance.currentUser;
         return NoTransitionPage(
           child: VerifyEmailScreen(email: user?.email ?? ''),
         );
@@ -142,6 +150,22 @@ final GoRouter screenRouter = GoRouter(
         final course = data['course'] as Course;
         final teeColor = data['teeColor'] as String;
         return InRoundScreen(course: course, teeColor: teeColor);
+      },
+    ),
+    GoRoute(
+      path: '/end-of-round',
+      builder: (context, state) {
+        final data = state.extra as Map<String, dynamic>;
+        final course = data['course'] as Course;
+        final teeColor = data['teeColor'] as String;
+        final holes = data['holes'] as List<Hole>;
+        final holeScores = Map<int, int>.from(data['holeScores'] as Map);
+        return EndOfRoundScreen(
+          course: course,
+          teeColor: teeColor,
+          holes: holes,
+          holeScores: holeScores,
+        );
       },
     ),
     ShellRoute(
@@ -180,7 +204,8 @@ final GoRouter screenRouter = GoRouter(
             GoRoute(
               path: 'preview/:courseId',
               pageBuilder: (context, state) {
-                final courseId = Uri.decodeComponent(state.pathParameters['courseId']!);
+                final courseId =
+                    Uri.decodeComponent(state.pathParameters['courseId']!);
                 return NoTransitionPage(
                   child: CoursePreviewScreen(courseId: courseId),
                 );
