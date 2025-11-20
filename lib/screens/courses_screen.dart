@@ -92,13 +92,15 @@ class _CoursesScreenState extends State<CoursesScreen> {
         print('Error getting location: $e');
       }
 
-      List<Course> courses = await _overpassApiService.fetchNearbyCourses(
+      // First, fetch basic course information
+      List<Course> basicCourses = await _overpassApiService.fetchNearbyCourses(
         latitude: latitude,
         longitude: longitude,
         radiusInMiles: 25.0,
       );
 
-      courses.sort((a, b) {
+      // Sort courses by distance
+      basicCourses.sort((a, b) {
         double distanceA = Geolocator.distanceBetween(
           latitude,
           longitude,
@@ -114,7 +116,27 @@ class _CoursesScreenState extends State<CoursesScreen> {
         return distanceA.compareTo(distanceB);
       });
 
-      return courses;
+      // Now fetch full details for each course (holes, tee boxes, par, yardage, etc.)
+      print('Fetching detailed information for ${basicCourses.length} courses...');
+      List<Course> detailedCourses = [];
+      
+      for (int i = 0; i < basicCourses.length; i++) {
+        final basicCourse = basicCourses[i];
+        print('Loading details for ${basicCourse.courseName} (${i + 1}/${basicCourses.length})');
+        
+        try {
+          // Fetch complete course details including holes and tee boxes
+          final detailedCourse = await _overpassApiService.fetchCourseDetails(basicCourse.courseId);
+          detailedCourses.add(detailedCourse);
+        } catch (e) {
+          // If fetching details fails for a course, keep the basic info
+          print('Failed to fetch details for ${basicCourse.courseName}: $e');
+          detailedCourses.add(basicCourse);
+        }
+      }
+
+      print('Successfully loaded ${detailedCourses.length} courses with full details');
+      return detailedCourses;
     } catch (e) {
       throw Exception('Failed to load courses: $e');
     }
@@ -188,6 +210,11 @@ class _CoursesScreenState extends State<CoursesScreen> {
                         CircularProgressIndicator(color: Colors.green),
                         SizedBox(height: 16),
                         Text('Loading nearby courses...'),
+                        SizedBox(height: 8),
+                        Text(
+                          'Fetching complete course details',
+                          style: TextStyle(fontSize: 12, color: Colors.grey),
+                        ),
                       ],
                     ),
                   );
@@ -294,9 +321,11 @@ class _CoursesScreenState extends State<CoursesScreen> {
                       courseLatitude: course.location.latitude,
                       courseLongitude: course.location.longitude,
                       onPreview: () {
-                        context.push('/courses/preview/${Uri.encodeComponent(course.courseId)}');
+                        if (!context.mounted) return;
+                        context.push('/courses/preview', extra: course);
                       },
                       onPlay: () {
+                        if (!context.mounted) return;
                         context.push('/course-details', extra: course);  // CHANGE THIS LINE
                       },
                     );

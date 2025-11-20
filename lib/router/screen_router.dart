@@ -202,12 +202,11 @@ final GoRouter screenRouter = GoRouter(
           ),
           routes: [
             GoRoute(
-              path: 'preview/:courseId',
+              path: 'preview',
               pageBuilder: (context, state) {
-                final courseId =
-                    Uri.decodeComponent(state.pathParameters['courseId']!);
+                final course = state.extra as Course;
                 return NoTransitionPage(
-                  child: CoursePreviewScreen(courseId: courseId),
+                  child: CoursePreviewScreen(course: course),
                 );
               },
             ),

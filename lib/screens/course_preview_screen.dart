@@ -1,128 +1,25 @@
 import 'package:flutter/material.dart';
-import 'package:golf_tracker_app/services/overpass_api_service.dart';
 import 'package:golf_tracker_app/models/models.dart';
 import 'package:golf_tracker_app/utils/image_helper.dart';
+import 'package:go_router/go_router.dart';
 
 class CoursePreviewScreen extends StatefulWidget {
-  final String courseId;
+  final Course course;
 
-  const CoursePreviewScreen({super.key, required this.courseId});
+  const CoursePreviewScreen({super.key, required this.course});
 
   @override
   State<CoursePreviewScreen> createState() => _CoursePreviewScreenState();
 }
 
 class _CoursePreviewScreenState extends State<CoursePreviewScreen> {
-  final OverpassApiService _apiService = OverpassApiService();
-  Course? _course;
-  bool _isLoading = true;
-  String? _errorMessage;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadCourseDetails();
-  }
-
-  Future<void> _loadCourseDetails() async {
-    try {
-      final course = await _apiService.fetchCourseDetails(widget.courseId);
-      setState(() {
-        _course = course;
-        _isLoading = false;
-      });
-    } catch (e) {
-      setState(() {
-        _errorMessage = e.toString();
-        _isLoading = false;
-      });
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
-      return Scaffold(
-        appBar: AppBar(
-          title: const Text('Loading...'),
-          backgroundColor: const Color(0xFF6B8E4E),
-          foregroundColor: Colors.white,
-        ),
-        body: const Center(
-          child: CircularProgressIndicator(
-            color: Color(0xFF6B8E4E),
-          ),
-        ),
-      );
-    }
-
-    if (_errorMessage != null) {
-      return Scaffold(
-        appBar: AppBar(
-          title: const Text('Error'),
-          backgroundColor: const Color(0xFF6B8E4E),
-          foregroundColor: Colors.white,
-        ),
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(20.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.error_outline, size: 64, color: Colors.red[300]),
-                const SizedBox(height: 16),
-                Text(
-                  'Failed to load course details',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.grey[800],
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  _errorMessage!,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.grey[600]),
-                ),
-                const SizedBox(height: 24),
-                ElevatedButton(
-                  onPressed: () {
-                    setState(() {
-                      _isLoading = true;
-                      _errorMessage = null;
-                    });
-                    _loadCourseDetails();
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF6B8E4E),
-                    foregroundColor: Colors.white,
-                  ),
-                  child: const Text('Retry'),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
-    if (_course == null) {
-      return Scaffold(
-        appBar: AppBar(
-          title: const Text('Course Not Found'),
-          backgroundColor: const Color(0xFF6B8E4E),
-          foregroundColor: Colors.white,
-        ),
-        body: const Center(
-          child: Text('Course data not available'),
-        ),
-      );
-    }
+    final course = widget.course;
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(_course!.courseName),
+        title: Text(course.courseName),
         backgroundColor: const Color(0xFF6B8E4E),
         foregroundColor: Colors.white,
       ),
@@ -152,7 +49,7 @@ class _CoursePreviewScreenState extends State<CoursePreviewScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    _course!.courseName,
+                    course.courseName,
                     style: const TextStyle(
                       fontSize: 28,
                       fontWeight: FontWeight.bold,
@@ -165,15 +62,15 @@ class _CoursePreviewScreenState extends State<CoursePreviewScreen> {
                     children: [
                       _buildStatColumn(
                         'Holes',
-                        _course!.holes?.length.toString() ?? 'N/A',
+                        course.holes?.length.toString() ?? 'N/A',
                       ),
                       _buildStatColumn(
                         'Par',
-                        _course!.totalPar?.toString() ?? 'N/A',
+                        course.totalPar?.toString() ?? 'N/A',
                       ),
                       _buildStatColumn(
                         'Yards',
-                        _calculateTotalYards().toString(),
+                        _calculateTotalYards(course).toString(),
                       ),
                     ],
                   ),
@@ -182,15 +79,15 @@ class _CoursePreviewScreenState extends State<CoursePreviewScreen> {
                   const SizedBox(height: 16),
                   
                   // Contact Information
-                  if (_course!.phoneNumber != null)
-                    _buildInfoRow('Phone', _course!.phoneNumber!),
-                  if (_course!.website != null)
-                    _buildInfoRow('Website', _course!.website!),
+                  if (course.phoneNumber != null)
+                    _buildInfoRow('Phone', course.phoneNumber!),
+                  if (course.website != null)
+                    _buildInfoRow('Website', course.website!),
                   
                   // Address Information
-                  if (_buildAddress().isNotEmpty) ...[
+                  if (_buildAddress(course).isNotEmpty) ...[
                     const SizedBox(height: 8),
-                    _buildInfoRow('Address', _buildAddress()),
+                    _buildInfoRow('Address', _buildAddress(course)),
                   ],
                   
                   const SizedBox(height: 32),
@@ -199,7 +96,7 @@ class _CoursePreviewScreenState extends State<CoursePreviewScreen> {
                     height: 50,
                     child: ElevatedButton(
                       onPressed: () {
-                        // TODO: Implement start round functionality
+                        context.push('/course-details', extra: course);
                       },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF6B8E4E),
@@ -217,7 +114,7 @@ class _CoursePreviewScreenState extends State<CoursePreviewScreen> {
                   const SizedBox(height: 32),
                   
                   // Hole Details Table
-                  if (_course!.holes != null && _course!.holes!.isNotEmpty) ...[
+                  if (course.holes != null && course.holes!.isNotEmpty) ...[
                     const Text(
                       'Hole Details',
                       style: TextStyle(
@@ -227,7 +124,7 @@ class _CoursePreviewScreenState extends State<CoursePreviewScreen> {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    _buildHolesTable(),
+                    _buildHolesTable(course),
                   ],
                 ],
               ),
@@ -238,7 +135,7 @@ class _CoursePreviewScreenState extends State<CoursePreviewScreen> {
     );
   }
 
-  Widget _buildHolesTable() {
+  Widget _buildHolesTable(Course course) {
     return Container(
       decoration: BoxDecoration(
         border: Border.all(color: const Color(0xFF6B8E4E).withOpacity(0.3)),
@@ -307,7 +204,7 @@ class _CoursePreviewScreenState extends State<CoursePreviewScreen> {
               ],
             ),
           ),
-          ...(_course!.holes!.asMap().entries.map((entry) {
+          ...(course.holes!.asMap().entries.map((entry) {
             final index = entry.key;
             final hole = entry.value;
             final isEven = index % 2 == 0;
@@ -327,7 +224,7 @@ class _CoursePreviewScreenState extends State<CoursePreviewScreen> {
                 color: isEven
                     ? const Color(0xFFE8F1D4).withOpacity(0.3)
                     : Colors.white,
-                borderRadius: index == _course!.holes!.length - 1
+                borderRadius: index == course.holes!.length - 1
                     ? const BorderRadius.only(
                         bottomLeft: Radius.circular(12),
                         bottomRight: Radius.circular(12),
@@ -392,38 +289,38 @@ class _CoursePreviewScreenState extends State<CoursePreviewScreen> {
     );
   }
 
-  String _buildAddress() {
+  String _buildAddress(Course course) {
     final parts = <String>[];
     
-    if (_course!.courseHouseNumber != null && _course!.courseStreetAddress != null) {
-      parts.add('${_course!.courseHouseNumber} ${_course!.courseStreetAddress}');
-    } else if (_course!.courseStreetAddress != null) {
-      parts.add(_course!.courseStreetAddress!);
+    if (course.courseHouseNumber != null && course.courseStreetAddress != null) {
+      parts.add('${course.courseHouseNumber} ${course.courseStreetAddress}');
+    } else if (course.courseStreetAddress != null) {
+      parts.add(course.courseStreetAddress!);
     }
     
-    if (_course!.courseCity != null) {
-      parts.add(_course!.courseCity!);
+    if (course.courseCity != null) {
+      parts.add(course.courseCity!);
     }
     
-    if (_course!.courseState != null) {
-      parts.add(_course!.courseState!);
+    if (course.courseState != null) {
+      parts.add(course.courseState!);
     }
     
-    if (_course!.coursePostalCode != null) {
-      parts.add(_course!.coursePostalCode!);
+    if (course.coursePostalCode != null) {
+      parts.add(course.coursePostalCode!);
     }
     
     return parts.join(', ');
   }
 
-  int _calculateTotalYards() {
-    if (_course?.holes == null || _course!.holes!.isEmpty) {
+  int _calculateTotalYards(Course course) {
+    if (course.holes == null || course.holes!.isEmpty) {
       return 0;
     }
 
     int totalYards = 0;
     
-    for (var hole in _course!.holes!) {
+    for (var hole in course.holes!) {
       if (hole.teeBoxes != null && hole.teeBoxes!.isNotEmpty) {
         final whiteTee = hole.teeBoxes!.firstWhere(
           (tee) => tee.tee.toLowerCase() == 'white',

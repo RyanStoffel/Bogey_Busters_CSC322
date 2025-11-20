@@ -68,9 +68,12 @@ class _BottomNavBarState extends State<BottomNavBar> {
 
       final closestCourse = courses.first;
       
-      // Navigate to the closest course
+      // Fetch full course details
+      final detailedCourse = await _overpassApiService.fetchCourseDetails(closestCourse.courseId);
+      
+      // Navigate to the closest course with full details
       if (context.mounted) {
-        context.push('/courses/preview/${Uri.encodeComponent(closestCourse.courseId)}');
+        context.push('/courses/preview', extra: detailedCourse);
       }
     } catch (e) {
       print('Error finding closest course: $e');
