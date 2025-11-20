@@ -77,6 +77,9 @@ dependencies:
   # Go Router
   go_router: ^14.0.0
 
+  # Live Activity
+  live_activities: ^1.6.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

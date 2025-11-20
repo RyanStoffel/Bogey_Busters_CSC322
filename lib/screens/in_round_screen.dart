@@ -7,7 +7,9 @@ import 'package:geolocator/geolocator.dart';
 import 'dart:math' as math;
 import 'dart:async';
 import 'dart:ui' as ui;
-import 'dart:typed_data';
+import 'dart:io' show Platform;
+
+import 'package:live_activities/live_activities.dart';
 
 class InRoundScreen extends StatefulWidget {
   final Course course;
@@ -26,6 +28,8 @@ class InRoundScreen extends StatefulWidget {
 class _InRoundScreenState extends State<InRoundScreen> with SingleTickerProviderStateMixin {
   late GoogleMapController mapController;
   final OverpassApiService _overpassApiService = OverpassApiService();
+  final _liveActivitiesPlugin = LiveActivities();
+  String? _activityId;
 
   // Store all markers and polygons, but only display current hole
   final Map<int, Set<Marker>> _holeMarkers = {};
@@ -54,6 +58,63 @@ class _InRoundScreenState extends State<InRoundScreen> with SingleTickerProvider
   // Animation for live indicator
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
+  
+  Future<void> startLiveActivity({
+    required int holeNumber,
+    required int distanceToGreen,
+    required int relativeToPar,
+    required String courseName,
+  }) async {
+    final activityData = {
+      'holeNumber': holeNumber,
+      'distanceToGreen': distanceToGreen,
+      'relativeToPar': relativeToPar,
+      'courseName': courseName,
+    };
+
+    _activityId = await _liveActivitiesPlugin.createActivity(activityData);
+  }
+
+  Future<void> updateLiveActivity({
+    required int holeNumber,
+    required int distanceToGreen,
+    required int relativeToPar,
+    required String courseName,
+  }) async {
+    if (_activityId == null) return;
+
+    final activityData = {
+      'holeNumber': holeNumber,
+      'distanceToGreen': distanceToGreen,
+      'relativeToPar': relativeToPar,
+      'courseName': courseName,
+    };
+
+    await _liveActivitiesPlugin.updateActivity(_activityId!, activityData);
+  }
+
+  void _updateLiveActivity() {
+  if (_activityId != null && currentHole != null) {
+    updateLiveActivity(
+      holeNumber: currentHole!.holeNumber,
+      distanceToGreen: _distanceToGreen?.round() ?? 0,
+      relativeToPar: _relativeToPar,
+      courseName: widget.course.courseName,
+    );
+  }
+}
+
+
+  Future<void> endLiveActivity() async {
+    if (_activityId == null) return;
+    await _liveActivitiesPlugin.endActivity(_activityId!);
+    _activityId = null;
+  }
+
+  void _endLiveActivity() {
+    endLiveActivity();
+  }
+  
 
   @override
   void initState() {
@@ -72,15 +133,26 @@ class _InRoundScreenState extends State<InRoundScreen> with SingleTickerProvider
     _createCustomMarkers();
     _loadCourseData();
     _startLocationTracking();
+
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (currentHole != null) {
+        startLiveActivity(
+          holeNumber: currentHole!.holeNumber,
+          distanceToGreen: _distanceToGreen?.round() ?? 0,
+          relativeToPar: _relativeToPar,
+          courseName: widget.course.courseName,
+        );
+      }
+    });
   }
 
   @override
   void dispose() {
     _positionStream?.cancel();
     _pulseController.dispose();
+    endLiveActivity();
     super.dispose();
   }
-
   Future<void> _createCustomMarkers() async {
     // Create a custom icon for user location programmatically
     final pictureRecorder = ui.PictureRecorder();
@@ -201,11 +273,12 @@ class _InRoundScreenState extends State<InRoundScreen> with SingleTickerProvider
       green.longitude!,
     );
 
-    // Convert meters to yards
     if (mounted) {
       setState(() {
         _distanceToGreen = distanceInMeters * 1.09361;
       });
+      
+      _updateLiveActivity();
     }
   }
 
@@ -439,6 +512,15 @@ class _InRoundScreenState extends State<InRoundScreen> with SingleTickerProvider
       // Update distance and polyline after holes are loaded
       _updateDistanceToGreen();
       _updatePolylineToGreen();
+      // After: _moveCameraToCurrentHole();
+      if (Platform.isIOS && currentHole != null) {
+        startLiveActivity(
+          holeNumber: currentHole!.holeNumber,
+          distanceToGreen: _distanceToGreen?.round() ?? 0,
+          relativeToPar: _relativeToPar,
+          courseName: widget.course.courseName,
+        );
+      }
 
       // Move camera to first hole after a short delay
       if (holes.isNotEmpty) {
@@ -774,10 +856,13 @@ class _InRoundScreenState extends State<InRoundScreen> with SingleTickerProvider
       // Update distance and polyline for new hole
       _updateDistanceToGreen();
       _updatePolylineToGreen();
-      
       _moveCameraToCurrentHole();
+      
+      // Update Live Activity for new hole
+      _updateLiveActivity();
     } else {
-      // Round complete - navigate to end of round screen
+      // Round complete - end Live Activity and navigate to end screen
+      _endLiveActivity();
       _navigateToEndOfRound();
     }
   }
