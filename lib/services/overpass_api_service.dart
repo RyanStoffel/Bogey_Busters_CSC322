@@ -8,7 +8,7 @@ class OverpassApiService {
   //////////////////////////
   
   static const String _baseUrl = 'https://overpass-api.de/api/interpreter';
-  static const int _timeoutSeconds = 1000;
+  static const int _timeoutSeconds = 2000;
   static double _milesToMeters(double miles) => miles * 1609.34;
 
   ///////////////////////

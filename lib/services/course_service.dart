@@ -52,7 +52,6 @@ class CourseService {
           'distance': data['distance'] ?? 'Unknown distance',
           'totalYards':
               data['totalYards']?.toString() ?? data['distance'] ?? 'Unknown distance',
-          'hasCarts': data['hasCarts'] ?? false,
           'imageUrl': imageUrl ?? '',
           'latitude': latitude,
           'longitude': longitude,
@@ -111,7 +110,6 @@ class CourseService {
           'distance': data['distance'] ?? 'Unknown distance',
           'totalYards':
               data['totalYards']?.toString() ?? data['distance'] ?? 'Unknown distance',
-          'hasCarts': data['hasCarts'] ?? false,
           'imageUrl': imageUrl ?? '',
           'latitude': latitude,
           'longitude': longitude,
