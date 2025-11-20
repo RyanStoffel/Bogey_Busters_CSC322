@@ -76,9 +76,9 @@ class OverpassApiService {
     return '''
       [out:json][timeout:$_timeoutSeconds];
       (
-        node["leisure"="golf_course"](around:$radiusInMeters,$latitude,$longitude);
-        way["leisure"="golf_course"](around:$radiusInMeters,$latitude,$longitude);
-        relation["leisure"="golf_course"](around:$radiusInMeters,$latitude,$longitude);
+        node["leisure"="golf_course"]["BBA"="true"](around:$radiusInMeters,$latitude,$longitude);
+        way["leisure"="golf_course"]["BBA"="true"](around:$radiusInMeters,$latitude,$longitude);
+        relation["leisure"="golf_course"]["BBA"="true"](around:$radiusInMeters,$latitude,$longitude);
       );
       out center tags;
     ''';
