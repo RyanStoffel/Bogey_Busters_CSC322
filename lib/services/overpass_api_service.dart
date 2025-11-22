@@ -1,12 +1,13 @@
 import 'dart:convert';
-import 'package:http/http.dart' as http;
+
 import 'package:golf_tracker_app/models/models.dart';
+import 'package:http/http.dart' as http;
 
 class OverpassApiService {
   //////////////////////////
   /// Instance Variables ///
   //////////////////////////
-  
+
   static const String _baseUrl = 'https://overpass-api.de/api/interpreter';
   static const int _timeoutSeconds = 2000;
   static double _milesToMeters(double miles) => miles * 1609.34;
@@ -14,7 +15,7 @@ class OverpassApiService {
   ///////////////////////
   /// Utility Methods ///
   ///////////////////////
-  
+
   Future<List<Course>> fetchNearbyCourses({
     required double latitude,
     required double longitude,
@@ -24,11 +25,13 @@ class OverpassApiService {
       final radiusInMeters = _milesToMeters(radiusInMiles);
       final query = _buildNearbyCoursesQuery(latitude, longitude, radiusInMeters);
 
-      final response = await http.post(
-        Uri.parse(_baseUrl),
-        headers: {'Content-Type': 'text/plain'},
-        body: query,
-      ).timeout(Duration(seconds: _timeoutSeconds));
+      final response = await http
+          .post(
+            Uri.parse(_baseUrl),
+            headers: {'Content-Type': 'text/plain'},
+            body: query,
+          )
+          .timeout(Duration(seconds: _timeoutSeconds));
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
@@ -41,15 +44,16 @@ class OverpassApiService {
     }
   }
 
-
   Future<Course> fetchCourseDetails(String courseId) async {
     try {
       final query = _buildCourseDetailsQuery(courseId);
-      final response = await http.post(
-        Uri.parse(_baseUrl),
-        headers: {'Content-Type': 'text/plain'},
-        body: query,
-      ).timeout(Duration(seconds: _timeoutSeconds));
+      final response = await http
+          .post(
+            Uri.parse(_baseUrl),
+            headers: {'Content-Type': 'text/plain'},
+            body: query,
+          )
+          .timeout(Duration(seconds: _timeoutSeconds));
 
       if (response.statusCode != 200) {
         throw Exception('Failed to fetch course details: ${response.statusCode}');
@@ -157,17 +161,16 @@ class OverpassApiService {
         final website = tags['website'] as String?;
 
         courses.add(Course(
-          courseId: courseId,
-          courseName: name,
-          location: CoordinatePoint(latitude: lat, longitude: lon),
-          courseStreetAddress: street,
-          courseHouseNumber: houseNumber,
-          courseCity: city,
-          courseState: state,
-          coursePostalCode: postcode,
-          phoneNumber: phone,
-          website: website
-        ));
+            courseId: courseId,
+            courseName: name,
+            location: CoordinatePoint(latitude: lat, longitude: lon),
+            courseStreetAddress: street,
+            courseHouseNumber: houseNumber,
+            courseCity: city,
+            courseState: state,
+            coursePostalCode: postcode,
+            phoneNumber: phone,
+            website: website));
       } catch (e) {
         throw Exception('Error parsing course: $e');
       }
@@ -182,7 +185,8 @@ class OverpassApiService {
     // Find the main course element
     Map<String, dynamic>? courseElement;
     for (var element in elements) {
-      if (element['id'].toString() == courseId.replaceAll(RegExp(r'^(node|way|relation)/'), '')) {
+      if (element['id'].toString() ==
+          courseId.replaceAll(RegExp(r'^(node|way|relation)/'), '')) {
         courseElement = element;
         break;
       }
@@ -251,7 +255,7 @@ class OverpassApiService {
 
       for (var element in elements) {
         final tags = element['tags'] as Map<String, dynamic>? ?? {};
-        
+
         // Get hole number from either 'hole' or 'ref' tag
         String? holeNumberStr = tags['hole'] as String?;
         if (holeNumberStr == null) {
@@ -293,7 +297,7 @@ class OverpassApiService {
           if (golfType == 'tee') {
             final teeColor = tags['tee'] as String? ?? 'unknown';
             final coords = _calculateCenterFromWay(element, nodeCoordinates);
-            
+
             // Try to get yardage from tags
             int? yards;
             if (tags.containsKey('yards')) {
@@ -301,7 +305,7 @@ class OverpassApiService {
             } else if (tags.containsKey('distance')) {
               yards = int.tryParse(tags['distance']?.toString() ?? '');
             }
-            
+
             if (coords != null) {
               teeBoxes.add(TeeBox(
                 tee: teeColor,

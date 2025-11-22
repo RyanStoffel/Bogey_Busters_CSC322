@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:golf_tracker_app/models/models.dart';
 import 'package:golf_tracker_app/utils/image_helper.dart';
-import 'package:go_router/go_router.dart';
 
 class CoursePreviewScreen extends StatefulWidget {
   final Course course;
@@ -77,19 +77,18 @@ class _CoursePreviewScreenState extends State<CoursePreviewScreen> {
                   const SizedBox(height: 24),
                   const Divider(),
                   const SizedBox(height: 16),
-                  
+
                   // Contact Information
                   if (course.phoneNumber != null)
                     _buildInfoRow('Phone', course.phoneNumber!),
-                  if (course.website != null)
-                    _buildInfoRow('Website', course.website!),
-                  
+                  if (course.website != null) _buildInfoRow('Website', course.website!),
+
                   // Address Information
                   if (_buildAddress(course).isNotEmpty) ...[
                     const SizedBox(height: 8),
                     _buildInfoRow('Address', _buildAddress(course)),
                   ],
-                  
+
                   const SizedBox(height: 32),
                   SizedBox(
                     width: double.infinity,
@@ -112,7 +111,7 @@ class _CoursePreviewScreenState extends State<CoursePreviewScreen> {
                     ),
                   ),
                   const SizedBox(height: 32),
-                  
+
                   // Hole Details Table
                   if (course.holes != null && course.holes!.isNotEmpty) ...[
                     const Text(
@@ -212,18 +211,26 @@ class _CoursePreviewScreenState extends State<CoursePreviewScreen> {
             // Get white tee yardage
             int? yards;
             if (hole.teeBoxes != null && hole.teeBoxes!.isNotEmpty) {
+              // Try exact match first, then fuzzy match for shared tees
               final whiteTee = hole.teeBoxes!.firstWhere(
                 (tee) => tee.tee.toLowerCase() == 'white',
-                orElse: () => hole.teeBoxes!.first,
+                orElse: () {
+                  return hole.teeBoxes!.firstWhere(
+                    (tee) => tee.tee
+                        .toLowerCase()
+                        .split(';')
+                        .map((c) => c.trim())
+                        .contains('white'),
+                    orElse: () => hole.teeBoxes!.first,
+                  );
+                },
               );
               yards = whiteTee.yards;
             }
 
             return Container(
               decoration: BoxDecoration(
-                color: isEven
-                    ? const Color(0xFFE8F1D4).withOpacity(0.3)
-                    : Colors.white,
+                color: isEven ? const Color(0xFFE8F1D4).withOpacity(0.3) : Colors.white,
                 borderRadius: index == course.holes!.length - 1
                     ? const BorderRadius.only(
                         bottomLeft: Radius.circular(12),
@@ -291,25 +298,25 @@ class _CoursePreviewScreenState extends State<CoursePreviewScreen> {
 
   String _buildAddress(Course course) {
     final parts = <String>[];
-    
+
     if (course.courseHouseNumber != null && course.courseStreetAddress != null) {
       parts.add('${course.courseHouseNumber} ${course.courseStreetAddress}');
     } else if (course.courseStreetAddress != null) {
       parts.add(course.courseStreetAddress!);
     }
-    
+
     if (course.courseCity != null) {
       parts.add(course.courseCity!);
     }
-    
+
     if (course.courseState != null) {
       parts.add(course.courseState!);
     }
-    
+
     if (course.coursePostalCode != null) {
       parts.add(course.coursePostalCode!);
     }
-    
+
     return parts.join(', ');
   }
 
@@ -319,20 +326,27 @@ class _CoursePreviewScreenState extends State<CoursePreviewScreen> {
     }
 
     int totalYards = 0;
-    
+
     for (var hole in course.holes!) {
       if (hole.teeBoxes != null && hole.teeBoxes!.isNotEmpty) {
+        // Try exact match first, then fuzzy match for shared tees
         final whiteTee = hole.teeBoxes!.firstWhere(
           (tee) => tee.tee.toLowerCase() == 'white',
-          orElse: () => hole.teeBoxes!.first,
+          orElse: () {
+            return hole.teeBoxes!.firstWhere(
+              (tee) =>
+                  tee.tee.toLowerCase().split(';').map((c) => c.trim()).contains('white'),
+              orElse: () => hole.teeBoxes!.first,
+            );
+          },
         );
-        
+
         if (whiteTee.yards != null) {
           totalYards += whiteTee.yards!;
         }
       }
     }
-    
+
     return totalYards;
   }
 
