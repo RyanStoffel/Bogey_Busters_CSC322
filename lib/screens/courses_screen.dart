@@ -110,7 +110,7 @@ class _CoursesScreenState extends State<CoursesScreen> {
       List<Course> basicCourses = await _overpassApiService.fetchNearbyCourses(
         latitude: latitude,
         longitude: longitude,
-        radiusInMiles: 25.0,
+        radiusInMiles: 50.0,
       );
 
       // Sort courses by distance
