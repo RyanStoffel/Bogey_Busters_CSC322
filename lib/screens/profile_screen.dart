@@ -44,6 +44,7 @@ class ProfileScreen extends StatelessWidget {
                   final lastName = userData['lastName'] ?? '';
                   final fullName = '$firstName $lastName'.trim();
                   final bio = userData['bio'] ?? 'Add a bio to tell others about yourself...';
+                  final handicap = 0;
 
                   return GestureDetector(
                     onTap: () {
@@ -127,6 +128,15 @@ class ProfileScreen extends StatelessWidget {
                                   maxLines: 3,
                                   overflow: TextOverflow.ellipsis,
                                 ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  "Handicap: $handicap",
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                  ),
+                                  maxLines: 3,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ],
                             ),
                           ),
@@ -205,7 +215,9 @@ class ProfileScreen extends StatelessWidget {
                           physics: const NeverScrollableScrollPhysics(),
                           itemCount: rounds.length,
                           itemBuilder: (context, index) {
-                            final roundData = rounds[index].data() as Map<String, dynamic>;
+                            final roundDoc = rounds[index];
+                            final roundData = roundDoc.data() as Map<String, dynamic>;
+                            final scorecardId = roundDoc.id;
                             final courseName = roundData['courseName'] ?? 'Unknown Course';
                             final score = roundData['score'] ?? 0;
                             final holes = roundData['holes'] ?? 18;
@@ -220,6 +232,10 @@ class ProfileScreen extends StatelessWidget {
                               par: par,
                               totalScore: score,
                               relativeToPar: relativeToPar,
+                              scorecardId: scorecardId,
+                              onDelete: () {
+                                // StreamBuilder will automatically refresh
+                              },
                             );
                           },
                         );

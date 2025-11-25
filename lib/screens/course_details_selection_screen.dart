@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:golf_tracker_app/models/models.dart';
 import 'package:go_router/go_router.dart';
+import 'package:golf_tracker_app/models/models.dart';
 
 class CourseDetailsSelectionScreen extends StatefulWidget {
   final Course course;
@@ -15,10 +15,10 @@ class CourseDetailsSelectionScreen extends StatefulWidget {
       _CourseDetailsSelectionScreenState();
 }
 
-class _CourseDetailsSelectionScreenState
-    extends State<CourseDetailsSelectionScreen> {
+class _CourseDetailsSelectionScreenState extends State<CourseDetailsSelectionScreen> {
   String? selectedTeeColor;
   List<String> availableTees = [];
+  Map<String, List<String>> _teeBoxMapping = {}; // Display color -> actual API tee names
 
   @override
   void initState() {
@@ -27,25 +27,69 @@ class _CourseDetailsSelectionScreenState
   }
 
   void _extractAvailableTees() {
-    final Set<String> teeSet = {};
-    
+    final Map<String, List<String>> teeBoxMapping = {}; // Color -> actual API tee names
+    final Set<String> individualTees = {};
+    final Set<String> sharedTees = {};
+
+    // Categorize tees across all holes
     if (widget.course.holes != null) {
       for (var hole in widget.course.holes!) {
         if (hole.teeBoxes != null) {
           for (var teeBox in hole.teeBoxes!) {
-            teeSet.add(teeBox.tee);
+            if (teeBox.tee.contains(';')) {
+              sharedTees.add(teeBox.tee);
+            } else {
+              individualTees.add(teeBox.tee);
+            }
           }
         }
       }
     }
-    
-    // If no tees found from holes, provide default options
-    if (teeSet.isEmpty) {
-      teeSet.addAll(['Black', 'Blue', 'White', 'Gold', 'Red']);
+
+    // Determine course type and build display tees
+    Set<String> displayTees = {};
+
+    if (individualTees.isNotEmpty) {
+      // Type 1 or 2: Has some individual tees (most full courses, or mixed)
+      // Use only individual tees, ignore shared ones to avoid duplicates
+      displayTees = individualTees;
+
+      // Build mapping for individual tees
+      for (var tee in individualTees) {
+        final capitalizedTee = _capitalizeTee(tee);
+        teeBoxMapping[capitalizedTee] = [tee]; // Maps "BLUE" -> ["blue"]
+        displayTees = displayTees.map((t) => _capitalizeTee(t)).toSet();
+      }
+    } else if (sharedTees.isNotEmpty) {
+      // Type 3: Only shared tees (par 3 courses)
+      // Split shared tees into individual options
+      for (var shared in sharedTees) {
+        var colors = shared.split(';');
+        for (var color in colors) {
+          var trimmedColor = color.trim();
+          var capitalizedColor = _capitalizeTee(trimmedColor);
+          displayTees.add(capitalizedColor);
+          teeBoxMapping.putIfAbsent(capitalizedColor, () => []);
+          if (!teeBoxMapping[capitalizedColor]!.contains(shared)) {
+            teeBoxMapping[capitalizedColor]!.add(shared);
+          }
+        }
+      }
     }
-    
+
+    // If no tees found from holes, provide default options
+    if (displayTees.isEmpty) {
+      displayTees.addAll(['Black', 'Blue', 'White', 'Gold', 'Red']);
+      for (var tee in displayTees) {
+        teeBoxMapping[tee] = [tee];
+      }
+    }
+
+    // Store mapping for later use
+    _teeBoxMapping = teeBoxMapping;
+
     setState(() {
-      availableTees = teeSet.toList();
+      availableTees = displayTees.toList();
       // Sort tees in traditional order
       availableTees.sort((a, b) {
         const order = ['Black', 'Blue', 'White', 'Gold', 'Red'];
@@ -55,7 +99,7 @@ class _CourseDetailsSelectionScreenState
         if (bIndex == -1) bIndex = 999;
         return aIndex.compareTo(bIndex);
       });
-      
+
       // Default to White tees if available
       if (availableTees.contains('White')) {
         selectedTeeColor = 'White';
@@ -63,6 +107,11 @@ class _CourseDetailsSelectionScreenState
         selectedTeeColor = availableTees.first;
       }
     });
+  }
+
+  String _capitalizeTee(String tee) {
+    if (tee.isEmpty) return tee;
+    return tee[0].toUpperCase() + tee.substring(1).toLowerCase();
   }
 
   Color _getTeeColor(String tee) {
@@ -75,6 +124,8 @@ class _CourseDetailsSelectionScreenState
         return Colors.white;
       case 'gold':
         return Colors.amber;
+      case 'yellow':
+        return Colors.yellow;
       case 'red':
         return Colors.red;
       default:
@@ -146,9 +197,9 @@ class _CourseDetailsSelectionScreenState
                   ],
                 ),
               ),
-              
+
               const SizedBox(height: 32),
-              
+
               // Tee Selection
               const Text(
                 'Select Tee Box',
@@ -159,7 +210,7 @@ class _CourseDetailsSelectionScreenState
                 ),
               ),
               const SizedBox(height: 16),
-              
+
               if (availableTees.isEmpty)
                 const Center(
                   child: Padding(
@@ -172,9 +223,9 @@ class _CourseDetailsSelectionScreenState
                 )
               else
                 ...availableTees.map((tee) => _buildTeeOption(tee)),
-              
+
               const SizedBox(height: 32),
-              
+
               // Start Round Button
               SizedBox(
                 width: double.infinity,
@@ -232,7 +283,7 @@ class _CourseDetailsSelectionScreenState
     final isSelected = selectedTeeColor == tee;
     final teeColor = _getTeeColor(tee);
     final isDark = tee.toLowerCase() == 'black' || tee.toLowerCase() == 'blue';
-    
+
     return GestureDetector(
       onTap: () {
         setState(() {

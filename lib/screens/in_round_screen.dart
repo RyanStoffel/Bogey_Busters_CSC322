@@ -1,14 +1,14 @@
+import 'dart:async';
+import 'dart:io' show Platform;
+import 'dart:math' as math;
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
-import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:go_router/go_router.dart';
 import 'package:golf_tracker_app/models/models.dart';
 import 'package:golf_tracker_app/services/overpass_api_service.dart';
-import 'package:go_router/go_router.dart';
-import 'package:geolocator/geolocator.dart';
-import 'dart:math' as math;
-import 'dart:async';
-import 'dart:ui' as ui;
-import 'dart:io' show Platform;
-
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:live_activities/live_activities.dart';
 
 class InRoundScreen extends StatefulWidget {
@@ -25,7 +25,8 @@ class InRoundScreen extends StatefulWidget {
   State<InRoundScreen> createState() => _InRoundScreenState();
 }
 
-class _InRoundScreenState extends State<InRoundScreen> with SingleTickerProviderStateMixin {
+class _InRoundScreenState extends State<InRoundScreen>
+    with SingleTickerProviderStateMixin {
   late GoogleMapController mapController;
   final OverpassApiService _overpassApiService = OverpassApiService();
   final _liveActivitiesPlugin = LiveActivities();
@@ -51,14 +52,14 @@ class _InRoundScreenState extends State<InRoundScreen> with SingleTickerProvider
   StreamSubscription<Position>? _positionStream;
   Set<Polyline> _polylines = {};
   double? _distanceToGreen;
-  
+
   // Custom marker for user location
   BitmapDescriptor? _userLocationIcon;
-  
+
   // Animation for live indicator
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
-  
+
   Future<void> startLiveActivity({
     required int holeNumber,
     required int distanceToGreen,
@@ -94,16 +95,15 @@ class _InRoundScreenState extends State<InRoundScreen> with SingleTickerProvider
   }
 
   void _updateLiveActivity() {
-  if (_activityId != null && currentHole != null) {
-    updateLiveActivity(
-      holeNumber: currentHole!.holeNumber,
-      distanceToGreen: _distanceToGreen?.round() ?? 0,
-      relativeToPar: _relativeToPar,
-      courseName: widget.course.courseName,
-    );
+    if (_activityId != null && currentHole != null) {
+      updateLiveActivity(
+        holeNumber: currentHole!.holeNumber,
+        distanceToGreen: _distanceToGreen?.round() ?? 0,
+        relativeToPar: _relativeToPar,
+        courseName: widget.course.courseName,
+      );
+    }
   }
-}
-
 
   Future<void> endLiveActivity() async {
     if (_activityId == null) return;
@@ -114,22 +114,21 @@ class _InRoundScreenState extends State<InRoundScreen> with SingleTickerProvider
   void _endLiveActivity() {
     endLiveActivity();
   }
-  
 
   @override
   void initState() {
     super.initState();
-    
+
     // Initialize pulse animation
     _pulseController = AnimationController(
       duration: const Duration(milliseconds: 1000),
       vsync: this,
     )..repeat(reverse: true);
-    
+
     _pulseAnimation = Tween<double>(begin: 0.6, end: 1.0).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
-    
+
     _createCustomMarkers();
     _loadCourseData();
     _startLocationTracking();
@@ -153,14 +152,15 @@ class _InRoundScreenState extends State<InRoundScreen> with SingleTickerProvider
     endLiveActivity();
     super.dispose();
   }
+
   Future<void> _createCustomMarkers() async {
     // Create a custom icon for user location programmatically
     final pictureRecorder = ui.PictureRecorder();
     final canvas = Canvas(pictureRecorder);
     final paint = Paint()..isAntiAlias = true;
-    
+
     const size = 48.0;
-    
+
     // Draw outer circle (shadow)
     paint.color = Colors.black.withOpacity(0.3);
     canvas.drawCircle(
@@ -168,7 +168,7 @@ class _InRoundScreenState extends State<InRoundScreen> with SingleTickerProvider
       size / 2 - 4,
       paint,
     );
-    
+
     // Draw main circle (yellow/gold)
     paint.color = Colors.yellow.shade700;
     canvas.drawCircle(
@@ -176,7 +176,7 @@ class _InRoundScreenState extends State<InRoundScreen> with SingleTickerProvider
       size / 2 - 4,
       paint,
     );
-    
+
     // Draw white inner circle (golf ball look)
     paint.color = Colors.white;
     canvas.drawCircle(
@@ -184,7 +184,7 @@ class _InRoundScreenState extends State<InRoundScreen> with SingleTickerProvider
       size / 2 - 8,
       paint,
     );
-    
+
     // Draw border
     paint.style = PaintingStyle.stroke;
     paint.strokeWidth = 2;
@@ -194,7 +194,7 @@ class _InRoundScreenState extends State<InRoundScreen> with SingleTickerProvider
       size / 2 - 8,
       paint,
     );
-    
+
     // Draw small dot in center
     paint.style = PaintingStyle.fill;
     paint.color = Colors.yellow.shade700;
@@ -203,14 +203,14 @@ class _InRoundScreenState extends State<InRoundScreen> with SingleTickerProvider
       3,
       paint,
     );
-    
+
     final picture = pictureRecorder.endRecording();
     final image = await picture.toImage(size.toInt(), size.toInt());
     final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
     final buffer = byteData!.buffer.asUint8List();
-    
+
     _userLocationIcon = BitmapDescriptor.bytes(buffer);
-    
+
     if (mounted) {
       setState(() {});
     }
@@ -224,7 +224,7 @@ class _InRoundScreenState extends State<InRoundScreen> with SingleTickerProvider
           accuracy: LocationAccuracy.high,
         ),
       );
-      
+
       if (mounted) {
         setState(() {
           _currentPosition = initialPosition;
@@ -277,7 +277,7 @@ class _InRoundScreenState extends State<InRoundScreen> with SingleTickerProvider
       setState(() {
         _distanceToGreen = distanceInMeters * 1.09361;
       });
-      
+
       _updateLiveActivity();
     }
   }
@@ -316,10 +316,10 @@ class _InRoundScreenState extends State<InRoundScreen> with SingleTickerProvider
   Set<Marker> get _currentMarkers {
     final currentHoleNum = currentHole?.holeNumber;
     if (currentHoleNum == null) return {};
-    
+
     // Add user location marker
     final markers = Set<Marker>.from(_holeMarkers[currentHoleNum] ?? {});
-    
+
     if (_currentPosition != null && _userLocationIcon != null) {
       markers.add(
         Marker(
@@ -336,7 +336,7 @@ class _InRoundScreenState extends State<InRoundScreen> with SingleTickerProvider
         ),
       );
     }
-    
+
     return markers;
   }
 
@@ -353,10 +353,24 @@ class _InRoundScreenState extends State<InRoundScreen> with SingleTickerProvider
 
   TeeBox? get currentTeeBox {
     if (currentHole?.teeBoxes == null) return null;
-    return currentHole!.teeBoxes!.firstWhere(
+
+    // Try to find exact match first
+    var teeBox = currentHole!.teeBoxes!.firstWhere(
       (tee) => tee.tee.toLowerCase() == widget.teeColor.toLowerCase(),
-      orElse: () => currentHole!.teeBoxes!.first,
+      orElse: () {
+        // Try to find a shared tee that contains this color
+        return currentHole!.teeBoxes!.firstWhere(
+          (tee) => tee.tee
+              .toLowerCase()
+              .split(';')
+              .map((c) => c.trim())
+              .contains(widget.teeColor.toLowerCase()),
+          orElse: () => currentHole!.teeBoxes!.first,
+        );
+      },
     );
+
+    return teeBox;
   }
 
   int get _relativeToPar {
@@ -406,9 +420,19 @@ class _InRoundScreenState extends State<InRoundScreen> with SingleTickerProvider
 
         // Add tee box markers for selected tee color
         if (hole.teeBoxes != null && hole.teeBoxes!.isNotEmpty) {
+          // Try exact match first, then fuzzy match for shared tees
           final selectedTee = hole.teeBoxes!.firstWhere(
             (tee) => tee.tee.toLowerCase() == widget.teeColor.toLowerCase(),
-            orElse: () => hole.teeBoxes!.first,
+            orElse: () {
+              return hole.teeBoxes!.firstWhere(
+                (tee) => tee.tee
+                    .toLowerCase()
+                    .split(';')
+                    .map((c) => c.trim())
+                    .contains(widget.teeColor.toLowerCase()),
+                orElse: () => hole.teeBoxes!.first,
+              );
+            },
           );
 
           print(
@@ -427,8 +451,7 @@ class _InRoundScreenState extends State<InRoundScreen> with SingleTickerProvider
                   title: 'Hole ${hole.holeNumber} Tee',
                   snippet: '${selectedTee.tee} • Par ${hole.par ?? "?"}',
                 ),
-                icon: BitmapDescriptor.defaultMarkerWithHue(
-                    BitmapDescriptor.hueAzure),
+                icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
               ),
             );
             teeMarkersAdded++;
@@ -454,8 +477,7 @@ class _InRoundScreenState extends State<InRoundScreen> with SingleTickerProvider
                 title: 'Hole ${hole.holeNumber} Green',
                 snippet: 'Par ${hole.par ?? "?"}',
               ),
-              icon: BitmapDescriptor.defaultMarkerWithHue(
-                  BitmapDescriptor.hueGreen),
+              icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
             ),
           );
           greenMarkersAdded++;
@@ -465,12 +487,10 @@ class _InRoundScreenState extends State<InRoundScreen> with SingleTickerProvider
         }
 
         // Draw green polygon
-        if (hole.greenCoordinates != null &&
-            hole.greenCoordinates!.isNotEmpty) {
+        if (hole.greenCoordinates != null && hole.greenCoordinates!.isNotEmpty) {
           try {
             final validCoords = hole.greenCoordinates!
-                .where((coord) =>
-                    coord.latitude != null && coord.longitude != null)
+                .where((coord) => coord.latitude != null && coord.longitude != null)
                 .map((coord) => LatLng(coord.latitude!, coord.longitude!))
                 .toList();
 
@@ -558,10 +578,8 @@ class _InRoundScreenState extends State<InRoundScreen> with SingleTickerProvider
     final green = currentHole!.greenLocation;
 
     // Check if we have valid tee location at minimum
-    if (teeBox?.location?.latitude == null ||
-        teeBox?.location?.longitude == null) {
-      print(
-          'Warning: Missing tee location for hole ${currentHole!.holeNumber}');
+    if (teeBox?.location?.latitude == null || teeBox?.location?.longitude == null) {
+      print('Warning: Missing tee location for hole ${currentHole!.holeNumber}');
       // Try to use green location as fallback
       if (green?.latitude != null && green?.longitude != null) {
         try {
@@ -593,8 +611,7 @@ class _InRoundScreenState extends State<InRoundScreen> with SingleTickerProvider
       if (green?.latitude != null && green?.longitude != null) {
         final greenLatLng = LatLng(green!.latitude!, green.longitude!);
 
-        print(
-            'Green location: ${greenLatLng.latitude}, ${greenLatLng.longitude}');
+        print('Green location: ${greenLatLng.latitude}, ${greenLatLng.longitude}');
 
         // Calculate bearing from tee to green
         final bearing = _calculateBearing(
@@ -842,8 +859,7 @@ class _InRoundScreenState extends State<InRoundScreen> with SingleTickerProvider
   void _finishHole() {
     // Save hole score
     _holeScores[currentHole!.holeNumber] = _currentScore!;
-    print(
-        'Hole ${currentHole!.holeNumber}: Score=$_currentScore, Putts=$_currentPutts');
+    print('Hole ${currentHole!.holeNumber}: Score=$_currentScore, Putts=$_currentPutts');
 
     // Move to next hole
     if (_currentHoleIndex < (_holes?.length ?? 0) - 1) {
@@ -852,12 +868,12 @@ class _InRoundScreenState extends State<InRoundScreen> with SingleTickerProvider
         _currentScore = null;
         _currentPutts = null;
       });
-      
+
       // Update distance and polyline for new hole
       _updateDistanceToGreen();
       _updatePolylineToGreen();
       _moveCameraToCurrentHole();
-      
+
       // Update Live Activity for new hole
       _updateLiveActivity();
     } else {
@@ -970,8 +986,7 @@ class _InRoundScreenState extends State<InRoundScreen> with SingleTickerProvider
                   // Hole Info
                   Expanded(
                     child: Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 12),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                       decoration: BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(12),
@@ -1047,8 +1062,7 @@ class _InRoundScreenState extends State<InRoundScreen> with SingleTickerProvider
               right: 0,
               child: Center(
                 child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                   decoration: BoxDecoration(
                     color: Colors.yellow.shade700,
                     borderRadius: BorderRadius.circular(12),
@@ -1122,8 +1136,7 @@ class _InRoundScreenState extends State<InRoundScreen> with SingleTickerProvider
               bottom: 32,
               right: 16,
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 decoration: BoxDecoration(
                   color: Colors.white.withOpacity(0.95),
                   borderRadius: BorderRadius.circular(20),

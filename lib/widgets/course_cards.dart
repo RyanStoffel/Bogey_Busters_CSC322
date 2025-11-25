@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:golf_tracker_app/models/course.dart';
 import 'package:golf_tracker_app/services/location_service.dart';
@@ -17,9 +19,11 @@ class CourseCard extends StatefulWidget {
   final Course? course;
   final VoidCallback? onPreview;
   final VoidCallback? onPlay;
+  final VoidCallback? onDelete;
   final String? imageUrl;
   final double? courseLatitude;
   final double? courseLongitude;
+  final String? scorecardId;
 
   const CourseCard({
     super.key,
@@ -35,9 +39,11 @@ class CourseCard extends StatefulWidget {
     this.course,
     this.onPreview,
     this.onPlay,
+    this.onDelete,
     this.imageUrl,
     this.courseLatitude,
     this.courseLongitude,
+    this.scorecardId,
   });
 
   @override
@@ -74,6 +80,83 @@ class _CourseCardState extends State<CourseCard> {
         _distanceFromUser = distanceInMiles;
         _isCalculatingDistance = false;
       });
+    }
+  }
+
+  Future<void> _showDeleteConfirmation() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Delete Scorecard'),
+          content: Text(
+            'Are you sure you want to delete this scorecard for ${widget.courseName}?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.red,
+              ),
+              child: const Text('Delete'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed == true) {
+      await _deleteScorecard();
+    }
+  }
+
+  Future<void> _deleteScorecard() async {
+    try {
+      final userId = FirebaseAuth.instance.currentUser?.uid;
+      if (userId == null || widget.scorecardId == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Unable to delete scorecard'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      // Delete from Firebase
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .collection('rounds')
+          .doc(widget.scorecardId)
+          .delete();
+
+      if (mounted) {
+        // Call the onDelete callback to remove from UI
+        widget.onDelete?.call();
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Scorecard deleted successfully'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error deleting scorecard: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -123,12 +206,23 @@ class _CourseCardState extends State<CourseCard> {
                          style: _textStyle(14, FontWeight.w500)),
                   ],
                 )
-              : Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              : Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(widget.courseName, style: _textStyle(18, FontWeight.w800)),
-                  //const SizedBox(height: 4),
-                  Text('${widget.holes} holes Par ${widget.par}', style: _textStyle(15, FontWeight.w400)),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(widget.courseName, style: _textStyle(18, FontWeight.w800)),
+                      //const SizedBox(height: 4),
+                      Text('${widget.holes} holes Par ${widget.par}', style: _textStyle(15, FontWeight.w400)),
+                    ],
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.delete),
+                    iconSize: 20,
+                    color: Colors.red,
+                    onPressed: _showDeleteConfirmation,
+                  )
                 ],
               ),
                      

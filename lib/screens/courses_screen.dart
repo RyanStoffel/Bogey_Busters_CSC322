@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:golf_tracker_app/services/overpass_api_service.dart';
-import 'package:golf_tracker_app/models/models.dart';
-import 'package:golf_tracker_app/widgets/course_cards.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
+import 'package:golf_tracker_app/models/models.dart';
+import 'package:golf_tracker_app/services/overpass_api_service.dart';
 import 'package:golf_tracker_app/utils/image_helper.dart';
+import 'package:golf_tracker_app/widgets/course_cards.dart';
 
 class CoursesScreen extends StatefulWidget {
   const CoursesScreen({super.key});
@@ -20,10 +20,24 @@ class _CoursesScreenState extends State<CoursesScreen> {
   int _displayCount = 5;
   String _searchQuery = '';
 
+  // Cache variables
+  static List<Course>? _cachedCourses;
+  static DateTime? _lastFetchTime;
+  static const Duration _cacheDuration = Duration(minutes: 30); // Cache for 30 minutes
+
   @override
   void initState() {
     super.initState();
-    _courses = _loadCourses();
+    // Check if we have valid cached data
+    if (_cachedCourses != null &&
+        _lastFetchTime != null &&
+        DateTime.now().difference(_lastFetchTime!) < _cacheDuration) {
+      // Use cached data
+      _courses = Future.value(_cachedCourses);
+    } else {
+      // Fetch fresh data
+      _courses = _loadCourses();
+    }
     _searchController.addListener(_onSearchChanged);
   }
 
@@ -50,17 +64,17 @@ class _CoursesScreenState extends State<CoursesScreen> {
     if (_searchQuery.isEmpty) {
       return courses;
     }
-    
+
     return courses.where((course) {
       final courseName = course.courseName.toLowerCase();
       final address = _formatAddress(course).toLowerCase();
       final city = course.courseCity?.toLowerCase() ?? '';
       final state = course.courseState?.toLowerCase() ?? '';
-      
+
       return courseName.contains(_searchQuery) ||
-             address.contains(_searchQuery) ||
-             city.contains(_searchQuery) ||
-             state.contains(_searchQuery);
+          address.contains(_searchQuery) ||
+          city.contains(_searchQuery) ||
+          state.contains(_searchQuery);
     }).toList();
   }
 
@@ -68,7 +82,7 @@ class _CoursesScreenState extends State<CoursesScreen> {
     try {
       const double cbuLatitude = 33.929483;
       const double cbuLongitude = -117.286400;
-      
+
       double latitude = cbuLatitude;
       double longitude = cbuLongitude;
 
@@ -78,7 +92,7 @@ class _CoursesScreenState extends State<CoursesScreen> {
           permission = await Geolocator.requestPermission();
         }
 
-        if (permission != LocationPermission.deniedForever && 
+        if (permission != LocationPermission.deniedForever &&
             permission != LocationPermission.denied) {
           Position position = await Geolocator.getCurrentPosition(
             locationSettings: LocationSettings(
@@ -96,7 +110,7 @@ class _CoursesScreenState extends State<CoursesScreen> {
       List<Course> basicCourses = await _overpassApiService.fetchNearbyCourses(
         latitude: latitude,
         longitude: longitude,
-        radiusInMiles: 25.0,
+        radiusInMiles: 50.0,
       );
 
       // Sort courses by distance
@@ -117,8 +131,9 @@ class _CoursesScreenState extends State<CoursesScreen> {
       });
 
       // Now fetch full details for all courses IN PARALLEL (much faster!)
-      print('Fetching detailed information for ${basicCourses.length} courses in parallel...');
-      
+      print(
+          'Fetching detailed information for ${basicCourses.length} courses in parallel...');
+
       // Create a list of futures for all course detail fetches
       final detailFutures = basicCourses.map((basicCourse) async {
         try {
@@ -131,11 +146,16 @@ class _CoursesScreenState extends State<CoursesScreen> {
           return basicCourse;
         }
       }).toList();
-      
+
       // Wait for all course details to be fetched at once
       final detailedCourses = await Future.wait(detailFutures);
 
       print('Successfully loaded ${detailedCourses.length} courses with full details');
+
+      // Cache the results
+      _cachedCourses = detailedCourses;
+      _lastFetchTime = DateTime.now();
+
       return detailedCourses;
     } catch (e) {
       throw Exception('Failed to load courses: $e');
@@ -144,12 +164,12 @@ class _CoursesScreenState extends State<CoursesScreen> {
 
   String _formatAddress(Course course) {
     final parts = <String>[];
-    
+
     if (course.courseHouseNumber != null) parts.add(course.courseHouseNumber!);
     if (course.courseStreetAddress != null) parts.add(course.courseStreetAddress!);
     if (course.courseCity != null) parts.add(course.courseCity!);
     if (course.courseState != null) parts.add(course.courseState!);
-    
+
     return parts.isEmpty ? 'Address not available' : parts.join(', ');
   }
 
@@ -164,6 +184,9 @@ class _CoursesScreenState extends State<CoursesScreen> {
             onPressed: () {
               setState(() {
                 _displayCount = 15;
+                // Clear cache and force refresh
+                _cachedCourses = null;
+                _lastFetchTime = null;
                 _courses = _loadCourses();
                 _searchController.clear();
               });
@@ -257,7 +280,7 @@ class _CoursesScreenState extends State<CoursesScreen> {
 
                 final allCourses = snapshot.data ?? [];
                 final filteredCourses = _filterCourses(allCourses);
-                
+
                 if (filteredCourses.isEmpty) {
                   return Center(
                     child: Column(
@@ -266,7 +289,7 @@ class _CoursesScreenState extends State<CoursesScreen> {
                         const Icon(Icons.golf_course, size: 64, color: Colors.grey),
                         const SizedBox(height: 16),
                         Text(
-                          _searchQuery.isEmpty 
+                          _searchQuery.isEmpty
                               ? 'No courses found nearby'
                               : 'No courses match your search',
                           style: Theme.of(context).textTheme.titleLarge,
@@ -296,9 +319,11 @@ class _CoursesScreenState extends State<CoursesScreen> {
                           child: ElevatedButton.icon(
                             onPressed: _loadMoreCourses,
                             icon: const Icon(Icons.arrow_downward),
-                            label: Text('Load More (${filteredCourses.length - _displayCount} remaining)'),
+                            label: Text(
+                                'Load More (${filteredCourses.length - _displayCount} remaining)'),
                             style: ElevatedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 24, vertical: 12),
                               foregroundColor: Colors.green,
                             ),
                           ),
@@ -307,16 +332,16 @@ class _CoursesScreenState extends State<CoursesScreen> {
                     }
 
                     final course = displayedCourses[index];
-                    
+
                     return CourseCard(
                       type: CourseCardType.courseCard,
                       courseName: course.courseName,
                       courseImage: getRandomCourseImage(),
-                      imageUrl: null, 
-                      holes: course.holes?.length ?? 18, 
-                      par: course.totalPar ?? 72, 
+                      imageUrl: null,
+                      holes: course.holes?.length ?? 18,
+                      par: course.totalPar ?? 72,
                       distance: _formatAddress(course),
-                      course: course,  // ADD THIS LINE - pass the full course object
+                      course: course, // ADD THIS LINE - pass the full course object
                       courseLatitude: course.location.latitude,
                       courseLongitude: course.location.longitude,
                       onPreview: () {
@@ -325,7 +350,8 @@ class _CoursesScreenState extends State<CoursesScreen> {
                       },
                       onPlay: () {
                         if (!context.mounted) return;
-                        context.push('/course-details', extra: course);  // CHANGE THIS LINE
+                        context.push('/course-details',
+                            extra: course); // CHANGE THIS LINE
                       },
                     );
                   },
