@@ -18,7 +18,7 @@ class OverpassApiService {
   Future<List<Course>> fetchNearbyCourses({
     required double latitude,
     required double longitude,
-    double radiusInMiles = 25.0,
+    double radiusInMiles = 50.0,
   }) async {
     try {
       final radiusInMeters = _milesToMeters(radiusInMiles);
