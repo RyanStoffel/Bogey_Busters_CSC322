@@ -9,6 +9,46 @@ import 'package:golf_tracker_app/utils/image_helper.dart';
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
 
+  Future<double> _calculateHandicap(String userId) async {
+    try {
+      final roundsSnapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .collection('rounds')
+          .orderBy('timestamp', descending: true)
+          .limit(20)
+          .get();
+
+      final eighteenHoleRounds = roundsSnapshot.docs.where((doc) {
+        final data = doc.data();
+        final holes = data['holes'] ?? 0;
+        return holes == 18;
+      }).toList();
+
+      if (eighteenHoleRounds.isEmpty) {
+        return 0.0;
+      }
+
+      final differentials = eighteenHoleRounds.map((doc) {
+        final data = doc.data();
+        final score = data['score'] ?? 0;
+        final par = data['par'] ?? 72;
+        return (score - par).toDouble();
+      }).toList();
+
+      differentials.sort();
+
+      final numberOfScoresToUse = differentials.length < 8 ? differentials.length : 8;
+      final bestScores = differentials.take(numberOfScoresToUse).toList();
+
+      final average = bestScores.reduce((a, b) => a + b) / bestScores.length;
+
+      return double.parse(average.toStringAsFixed(1));
+    } catch (e) {
+      return 0.0;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
@@ -44,9 +84,13 @@ class ProfileScreen extends StatelessWidget {
                   final lastName = userData['lastName'] ?? '';
                   final fullName = '$firstName $lastName'.trim();
                   final bio = userData['bio'] ?? 'Add a bio to tell others about yourself...';
-                  final handicap = 0;
 
-                  return GestureDetector(
+                  return FutureBuilder<double>(
+                    future: _calculateHandicap(user?.uid ?? ''),
+                    builder: (context, handicapSnapshot) {
+                      final handicap = handicapSnapshot.data ?? 0.0;
+
+                      return GestureDetector(
                     onTap: () {
                       context.push('/edit-profile');
                     },
@@ -148,6 +192,8 @@ class ProfileScreen extends StatelessWidget {
                         ],
                       ),
                     ),
+                  );
+                    },
                   );
                 },
               ),
