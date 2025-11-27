@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:golf_tracker_app/models/models.dart';
+import 'package:golf_tracker_app/services/course_service.dart';
 import 'package:golf_tracker_app/services/overpass_api_service.dart';
 import 'package:golf_tracker_app/utils/image_helper.dart';
 import 'package:golf_tracker_app/widgets/course_cards.dart';
@@ -15,6 +16,7 @@ class CoursesScreen extends StatefulWidget {
 
 class _CoursesScreenState extends State<CoursesScreen> {
   final OverpassApiService _overpassApiService = OverpassApiService();
+  final CourseService _courseService = CourseService();
   final TextEditingController _searchController = TextEditingController();
   late Future<List<Course>> _courses;
   int _displayCount = 5;
@@ -106,15 +108,33 @@ class _CoursesScreenState extends State<CoursesScreen> {
         print('Error getting location: $e');
       }
 
-      // First, fetch basic course information
-      List<Course> basicCourses = await _overpassApiService.fetchNearbyCourses(
-        latitude: latitude,
-        longitude: longitude,
-        radiusInMiles: 50.0,
-      );
+      final courseIds = await _courseService.getCourseIds();
+
+      print('Found ${courseIds.length} course IDs in Firebase');
+
+      print(
+          'Fetching detailed information for ${courseIds.length} courses in parallel...');
+
+      final detailFutures = courseIds.map((courseId) async {
+        try {
+          print('Loading details for $courseId');
+          // Fetch complete course details including holes and tee boxes
+          return await _overpassApiService.fetchCourseDetails(courseId);
+        } catch (e) {
+          // If fetching details fails for a course, return null
+          print('Failed to fetch details for $courseId: $e');
+          return null;
+        }
+      }).toList();
+
+      // Wait for all course details to be fetched at once
+      final detailedCourses = (await Future.wait(detailFutures))
+          .where((course) => course != null)
+          .cast<Course>()
+          .toList();
 
       // Sort courses by distance
-      basicCourses.sort((a, b) {
+      detailedCourses.sort((a, b) {
         double distanceA = Geolocator.distanceBetween(
           latitude,
           longitude,
@@ -129,26 +149,6 @@ class _CoursesScreenState extends State<CoursesScreen> {
         );
         return distanceA.compareTo(distanceB);
       });
-
-      // Now fetch full details for all courses IN PARALLEL (much faster!)
-      print(
-          'Fetching detailed information for ${basicCourses.length} courses in parallel...');
-
-      // Create a list of futures for all course detail fetches
-      final detailFutures = basicCourses.map((basicCourse) async {
-        try {
-          print('Loading details for ${basicCourse.courseName}');
-          // Fetch complete course details including holes and tee boxes
-          return await _overpassApiService.fetchCourseDetails(basicCourse.courseId);
-        } catch (e) {
-          // If fetching details fails for a course, keep the basic info
-          print('Failed to fetch details for ${basicCourse.courseName}: $e');
-          return basicCourse;
-        }
-      }).toList();
-
-      // Wait for all course details to be fetched at once
-      final detailedCourses = await Future.wait(detailFutures);
 
       print('Successfully loaded ${detailedCourses.length} courses with full details');
 

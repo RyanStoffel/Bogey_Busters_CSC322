@@ -5,6 +5,21 @@ class CourseService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseStorage _storage = FirebaseStorage.instance;
 
+  /// Fetch course IDs from Firebase courses collection
+  Future<List<String>> getCourseIds() async {
+    try {
+      final snapshot = await _firestore.collection('courses').get();
+      return snapshot.docs
+          .map((doc) => doc.data()['courseId'] as String?)
+          .where((id) => id != null)
+          .cast<String>()
+          .toList();
+    } catch (e) {
+      print('Error fetching course IDs from Firebase: $e');
+      return [];
+    }
+  }
+
   /// Fetch all courses from Firestore for display purposes
   Future<List<Map<String, dynamic>>> getAllCoursesForDisplay() async {
     try {
