@@ -1,10 +1,11 @@
-import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:go_router/go_router.dart';
-import 'package:golf_tracker_app/services/firestorage_service.dart';
-import 'package:golf_tracker_app/services/overpass_api_service.dart';
-import 'package:golf_tracker_app/services/location_service.dart';
+import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:go_router/go_router.dart';
+import 'package:golf_tracker_app/services/course_service.dart';
+import 'package:golf_tracker_app/services/firestorage_service.dart';
+import 'package:golf_tracker_app/services/location_service.dart';
+import 'package:golf_tracker_app/services/overpass_api_service.dart';
 
 class BottomNavBar extends StatefulWidget {
   final int currentIndex;
@@ -22,28 +23,44 @@ class _BottomNavBarState extends State<BottomNavBar> {
   late Future<String?> _profileUrl;
   final LocationService _locationService = LocationService();
   final OverpassApiService _overpassApiService = OverpassApiService();
+  final CourseService _courseService = CourseService();
 
   @override
   void initState() {
     super.initState();
-    _profileUrl = FirestorageService().getProfileImageUrl(FirebaseAuth.instance.currentUser?.uid ?? '');
+    _profileUrl = FirestorageService()
+        .getProfileImageUrl(FirebaseAuth.instance.currentUser?.uid ?? '');
   }
 
   Future<void> _navigateToClosestCourse(BuildContext context) async {
     try {
       // Get current location
       final position = await _locationService.getCurrentLocation();
-      
+
       if (position == null) {
         return;
       }
 
-      // Fetch nearby courses
-      final courses = await _overpassApiService.fetchNearbyCourses(
-        latitude: position.latitude,
-        longitude: position.longitude,
-        radiusInMiles: 25.0,
-      );
+      // Fetch course IDs from Firebase
+      final courseIds = await _courseService.getCourseIds();
+
+      if (courseIds.isEmpty) {
+        print('No courses found in Firebase');
+        return;
+      }
+
+      // Fetch full details for all courses in parallel
+      final courseFutures = courseIds.map((courseId) async {
+        try {
+          return await _overpassApiService.fetchCourseDetails(courseId);
+        } catch (e) {
+          print('Failed to fetch details for $courseId: $e');
+          return null;
+        }
+      }).toList();
+
+      final courses =
+          (await Future.wait(courseFutures)).where((course) => course != null).toList();
 
       if (courses.isEmpty) {
         return;
@@ -54,26 +71,23 @@ class _BottomNavBarState extends State<BottomNavBar> {
         double distanceA = Geolocator.distanceBetween(
           position.latitude,
           position.longitude,
-          a.location.latitude!,
+          a!.location.latitude!,
           a.location.longitude!,
         );
         double distanceB = Geolocator.distanceBetween(
           position.latitude,
           position.longitude,
-          b.location.latitude!,
+          b!.location.latitude!,
           b.location.longitude!,
         );
         return distanceA.compareTo(distanceB);
       });
 
       final closestCourse = courses.first;
-      
-      // Fetch full course details
-      final detailedCourse = await _overpassApiService.fetchCourseDetails(closestCourse.courseId);
-      
+
       // Navigate to the closest course with full details
       if (context.mounted) {
-        context.push('/courses/preview', extra: detailedCourse);
+        context.push('/courses/preview', extra: closestCourse);
       }
     } catch (e) {
       print('Error finding closest course: $e');

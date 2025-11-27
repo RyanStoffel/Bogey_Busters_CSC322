@@ -58,11 +58,11 @@ class _CourseCardState extends State<CourseCard> {
   @override
   void initState() {
     super.initState();
-    if (widget.type == CourseCardType.courseCard && 
-        widget.courseLatitude != null && 
+    if (widget.type == CourseCardType.courseCard &&
+        widget.courseLatitude != null &&
         widget.courseLongitude != null) {
       _calculateDistance();
-    } 
+    }
   }
 
   Future<void> _calculateDistance() async {
@@ -140,7 +140,7 @@ class _CourseCardState extends State<CourseCard> {
       if (mounted) {
         // Call the onDelete callback to remove from UI
         widget.onDelete?.call();
-        
+
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Scorecard deleted successfully'),
@@ -193,39 +193,40 @@ class _CourseCardState extends State<CourseCard> {
                 const SizedBox(height: 4),
                 _buildDistanceRow(),
                 const SizedBox(height: 4),
-                Text('${widget.distance} yards', style: _textStyle(14, FontWeight.w400)),
+                Text('${widget.distance}', style: _textStyle(14, FontWeight.w400)),
               ],
             )
           : widget.type == CourseCardType.friendCourseScoreCard
               ? Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('${widget.friendName} Played at:', style: _textStyle(16, FontWeight.w600)),
+                    Text('${widget.friendName} Played at:',
+                        style: _textStyle(16, FontWeight.w600)),
                     const SizedBox(height: 4),
-                    Text('${widget.courseName} - ${widget.holes} holes Par ${widget.par}', 
-                         style: _textStyle(14, FontWeight.w500)),
+                    Text('${widget.courseName} - ${widget.holes} holes Par ${widget.par}',
+                        style: _textStyle(14, FontWeight.w500)),
                   ],
                 )
               : Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(widget.courseName, style: _textStyle(18, FontWeight.w800)),
-                      //const SizedBox(height: 4),
-                      Text('${widget.holes} holes Par ${widget.par}', style: _textStyle(15, FontWeight.w400)),
-                    ],
-                  ),
-                  IconButton(
-                    icon: Icon(Icons.delete),
-                    iconSize: 20,
-                    color: Colors.red,
-                    onPressed: _showDeleteConfirmation,
-                  )
-                ],
-              ),
-                     
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(widget.courseName, style: _textStyle(18, FontWeight.w800)),
+                        //const SizedBox(height: 4),
+                        Text('${widget.holes} holes Par ${widget.par}',
+                            style: _textStyle(15, FontWeight.w400)),
+                      ],
+                    ),
+                    IconButton(
+                      icon: Icon(Icons.delete),
+                      iconSize: 20,
+                      color: Colors.red,
+                      onPressed: _showDeleteConfirmation,
+                    )
+                  ],
+                ),
     );
   }
 
@@ -341,7 +342,8 @@ class _CourseCardState extends State<CourseCard> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 _buildScoreItem('Total Score:', widget.totalScore.toString()),
-                _buildScoreItem('Relative to Par:', '${widget.relativeToPar! >= 0 ? '+' : ''}${widget.relativeToPar}'),
+                _buildScoreItem('Relative to Par:',
+                    '${widget.relativeToPar! >= 0 ? '+' : ''}${widget.relativeToPar}'),
               ],
             ),
     );
@@ -360,13 +362,13 @@ class _CourseCardState extends State<CourseCard> {
 
   Widget _buildButton(String text, {bool isOutlined = false}) {
     VoidCallback? onPressed;
-    
+
     if (text == 'Preview') {
       onPressed = widget.onPreview;
     } else if (text == 'Play') {
       onPressed = widget.onPlay;
     }
-    
+
     return isOutlined
         ? OutlinedButton(
             onPressed: onPressed,
