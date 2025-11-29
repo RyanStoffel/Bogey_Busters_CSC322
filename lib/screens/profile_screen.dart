@@ -1,10 +1,10 @@
-import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:golf_tracker_app/services/services.dart';
-import 'package:golf_tracker_app/widgets/course_cards.dart';
 import 'package:golf_tracker_app/utils/image_helper.dart';
+import 'package:golf_tracker_app/widgets/course_cards.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -83,7 +83,8 @@ class ProfileScreen extends StatelessWidget {
                   final firstName = userData['firstName'] ?? '';
                   final lastName = userData['lastName'] ?? '';
                   final fullName = '$firstName $lastName'.trim();
-                  final bio = userData['bio'] ?? 'Add a bio to tell others about yourself...';
+                  final bio =
+                      userData['bio'] ?? 'Add a bio to tell others about yourself...';
 
                   return FutureBuilder<double>(
                     future: _calculateHandicap(user?.uid ?? ''),
@@ -91,108 +92,163 @@ class ProfileScreen extends StatelessWidget {
                       final handicap = handicapSnapshot.data ?? 0.0;
 
                       return GestureDetector(
-                    onTap: () {
-                      context.push('/edit-profile');
-                    },
-                    child: Container(
-                      margin: const EdgeInsets.all(16),
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.grey.withOpacity(0.2),
-                            spreadRadius: 1,
-                            blurRadius: 4,
-                            offset: const Offset(0, 2),
+                        onTap: () {
+                          context.push('/edit-profile');
+                        },
+                        child: Container(
+                          margin: const EdgeInsets.all(16),
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.grey.withOpacity(0.2),
+                                spreadRadius: 1,
+                                blurRadius: 4,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          FutureBuilder<String?>(
-                            future: FirestorageService().getProfileImageUrl(user?.uid ?? ''),
-                            builder: (context, snapshot) {
-                              if (snapshot.connectionState == ConnectionState.waiting) {
-                                return const SizedBox(
-                                  width: 80,
-                                  height: 80,
-                                  child: Center(
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
+                          child: Column(
+                            children: [
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  FutureBuilder<String?>(
+                                    future: FirestorageService()
+                                        .getProfileImageUrl(user?.uid ?? ''),
+                                    builder: (context, snapshot) {
+                                      if (snapshot.connectionState ==
+                                          ConnectionState.waiting) {
+                                        return const SizedBox(
+                                          width: 80,
+                                          height: 80,
+                                          child: Center(
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                            ),
+                                          ),
+                                        );
+                                      }
+
+                                      final url = snapshot.data;
+                                      if (url == null || url.isEmpty) {
+                                        return const CircleAvatar(
+                                          radius: 40,
+                                          backgroundColor: Colors.grey,
+                                          child: Icon(Icons.person,
+                                              size: 40, color: Colors.white),
+                                        );
+                                      }
+
+                                      return CircleAvatar(
+                                        radius: 40,
+                                        backgroundImage: NetworkImage(url),
+                                      );
+                                    },
+                                  ),
+                                  const SizedBox(width: 16),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          fullName.isEmpty ? 'No Name' : fullName,
+                                          style: const TextStyle(
+                                            fontSize: 20,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          user?.email ?? '',
+                                          style: TextStyle(
+                                            fontSize: 14,
+                                            color: Colors.grey[600],
+                                          ),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        Text(
+                                          bio,
+                                          style: TextStyle(
+                                            fontSize: 14,
+                                            color: bio.startsWith('Add')
+                                                ? Colors.grey[400]
+                                                : Colors.black87,
+                                          ),
+                                          maxLines: 3,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        const SizedBox(height: 8),
+                                        Text(
+                                          "Handicap: $handicap",
+                                          style: TextStyle(
+                                            fontSize: 14,
+                                          ),
+                                          maxLines: 3,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ],
                                     ),
                                   ),
-                                );
-                              }
+                                  Column(
+                                    children: [
+                                      Icon(
+                                        Icons.edit,
+                                        color: Colors.grey[400],
+                                        size: 20,
+                                      ),
+                                      const SizedBox(height: 30),
+                                      GestureDetector(
+                                        onTap: () async {
+                                          final confirmed = await showDialog<bool>(
+                                            context: context,
+                                            builder: (BuildContext context) {
+                                              return AlertDialog(
+                                                title: const Text('Logout'),
+                                                content: const Text(
+                                                    'Are you sure you want to logout?'),
+                                                actions: [
+                                                  TextButton(
+                                                    onPressed: () =>
+                                                        Navigator.of(context).pop(false),
+                                                    child: const Text('Cancel'),
+                                                  ),
+                                                  TextButton(
+                                                    onPressed: () =>
+                                                        Navigator.of(context).pop(true),
+                                                    style: TextButton.styleFrom(
+                                                      foregroundColor: Colors.red,
+                                                    ),
+                                                    child: const Text('Logout'),
+                                                  ),
+                                                ],
+                                              );
+                                            },
+                                          );
 
-                              final url = snapshot.data;
-                              if (url == null || url.isEmpty) {
-                                return const CircleAvatar(
-                                  radius: 40,
-                                  backgroundColor: Colors.grey,
-                                  child: Icon(Icons.person, size: 40, color: Colors.white),
-                                );
-                              }
-
-                              return CircleAvatar(
-                                radius: 40,
-                                backgroundImage: NetworkImage(url),
-                              );
-                            },
+                                          if (confirmed == true) {
+                                            await AuthService().signOut();
+                                            if (context.mounted) {
+                                              context.go('/login');
+                                            }
+                                          }
+                                        },
+                                        child: Icon(
+                                          Icons.logout,
+                                          color: Colors.red[400],
+                                          size: 20,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ],
                           ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  fullName.isEmpty ? 'No Name' : fullName,
-                                  style: const TextStyle(
-                                    fontSize: 20,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  user?.email ?? '',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    color: Colors.grey[600],
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  bio,
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    color: bio.startsWith('Add') ? Colors.grey[400] : Colors.black87,
-                                  ),
-                                  maxLines: 3,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  "Handicap: $handicap",
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                  ),
-                                  maxLines: 3,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ],
-                            ),
-                          ),
-                          Icon(
-                            Icons.edit,
-                            color: Colors.grey[400],
-                            size: 20,
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
+                        ),
+                      );
                     },
                   );
                 },
@@ -264,7 +320,8 @@ class ProfileScreen extends StatelessWidget {
                             final roundDoc = rounds[index];
                             final roundData = roundDoc.data() as Map<String, dynamic>;
                             final scorecardId = roundDoc.id;
-                            final courseName = roundData['courseName'] ?? 'Unknown Course';
+                            final courseName =
+                                roundData['courseName'] ?? 'Unknown Course';
                             final score = roundData['score'] ?? 0;
                             final holes = roundData['holes'] ?? 18;
                             final par = roundData['par'] ?? 72;

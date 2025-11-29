@@ -64,7 +64,6 @@ dependencies:
   google_maps_flutter: ^2.9.0
   sliding_up_panel: ^2.0.0+1
 
-
   # Geolocation
   geolocator: ^13.0.0
 
@@ -79,6 +78,9 @@ dependencies:
 
   # Live Activity
   live_activities: ^1.6.0
+
+  # Badges
+  badges: ^3.1.2
 
 dev_dependencies:
   flutter_test:
