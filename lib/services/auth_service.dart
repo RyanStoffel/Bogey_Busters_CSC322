@@ -1,6 +1,7 @@
 import 'dart:io';
-import 'package:firebase_auth/firebase_auth.dart';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -117,6 +118,8 @@ class AuthService {
           'emailVerified': currentUser.emailVerified,
           'onboardingCompleted': false,
           'isAdmin': isAdmin,
+          'friends': [], // Initialize friends list
+          'receivedFriendRequests': [], // Initialize friend requests list
         });
       } else {
         // If document exists, do not automatically change admin status here.

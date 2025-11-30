@@ -404,17 +404,8 @@ class _InRoundScreenState extends State<InRoundScreen>
         throw Exception('No hole data available for this course');
       }
 
-      int teeMarkersAdded = 0;
-      int greenMarkersAdded = 0;
-      int polygonsAdded = 0;
-
       // Add markers for all holes, organized by hole number
       for (var hole in holes) {
-        print('\n--- Processing Hole ${hole.holeNumber} ---');
-        print('Par: ${hole.par}, Handicap: ${hole.handicap}');
-        print('Tee boxes available: ${hole.teeBoxes?.length ?? 0}');
-        print('Green location: ${hole.greenLocation != null ? "Yes" : "No"}');
-
         final holeMarkers = <Marker>{};
         final holePolygons = <Polygon>{};
 
@@ -435,9 +426,6 @@ class _InRoundScreenState extends State<InRoundScreen>
             },
           );
 
-          print(
-              'Selected tee: ${selectedTee.tee}, Location: ${selectedTee.location?.latitude}, ${selectedTee.location?.longitude}');
-
           if (selectedTee.location?.latitude != null &&
               selectedTee.location?.longitude != null) {
             holeMarkers.add(
@@ -454,13 +442,7 @@ class _InRoundScreenState extends State<InRoundScreen>
                 icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
               ),
             );
-            teeMarkersAdded++;
-            print('✓ Added tee marker for hole ${hole.holeNumber}');
-          } else {
-            print('✗ No valid tee location for hole ${hole.holeNumber}');
           }
-        } else {
-          print('✗ No tee boxes for hole ${hole.holeNumber}');
         }
 
         // Add green marker
@@ -480,8 +462,6 @@ class _InRoundScreenState extends State<InRoundScreen>
               icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
             ),
           );
-          greenMarkersAdded++;
-          print('✓ Added green marker for hole ${hole.holeNumber}');
         } else {
           print('✗ No green location for hole ${hole.holeNumber}');
         }
@@ -504,9 +484,6 @@ class _InRoundScreenState extends State<InRoundScreen>
                   strokeWidth: 2,
                 ),
               );
-              polygonsAdded++;
-              print(
-                  '✓ Added green polygon for hole ${hole.holeNumber} with ${validCoords.length} points');
             }
           } catch (e) {
             print('✗ Error creating polygon for hole ${hole.holeNumber}: $e');
@@ -517,12 +494,6 @@ class _InRoundScreenState extends State<InRoundScreen>
         _holeMarkers[hole.holeNumber] = holeMarkers;
         _holePolygons[hole.holeNumber] = holePolygons;
       }
-
-      print('\n=== Summary ===');
-      print('Total holes: ${holes.length}');
-      print('Tee markers added: $teeMarkersAdded');
-      print('Green markers added: $greenMarkersAdded');
-      print('Green polygons added: $polygonsAdded');
 
       setState(() {
         _holes = holes;
