@@ -25,46 +25,60 @@ class _BottomNavBarState extends State<BottomNavBar> {
   final OverpassApiService _overpassApiService = OverpassApiService();
   final CourseService _courseService = CourseService();
 
+  // Simple cache
+  List? _cachedCourses;
+  bool _isFetching = false;
+
   @override
   void initState() {
     super.initState();
     _profileUrl = FirestorageService()
         .getProfileImageUrl(FirebaseAuth.instance.currentUser?.uid ?? '');
+    
+    // Prefetch courses on startup
+    _fetchAndCacheCourses();
   }
 
-  Future<void> _navigateToClosestCourse(BuildContext context) async {
+  Future<void> _fetchAndCacheCourses() async {
+    if (_isFetching || _cachedCourses != null) return;
+    
+    _isFetching = true;
     try {
-      // Get current location
-      final position = await _locationService.getCurrentLocation();
-
-      if (position == null) {
-        return;
-      }
-
-      // Fetch course IDs from Firebase
       final courseIds = await _courseService.getCourseIds();
+      if (courseIds.isEmpty) return;
 
-      if (courseIds.isEmpty) {
-        print('No courses found in Firebase');
-        return;
-      }
-
-      // Fetch full details for all courses in parallel
       final courseFutures = courseIds.map((courseId) async {
         try {
           return await _overpassApiService.fetchCourseDetails(courseId);
         } catch (e) {
-          print('Failed to fetch details for $courseId: $e');
           return null;
         }
       }).toList();
 
-      final courses =
-          (await Future.wait(courseFutures)).where((course) => course != null).toList();
+      final courses = (await Future.wait(courseFutures))
+          .where((course) => course != null)
+          .toList();
 
-      if (courses.isEmpty) {
+      _cachedCourses = courses;
+    } catch (e) {
+      print('Cache error: $e');
+    } finally {
+      _isFetching = false;
+    }
+  }
+
+  Future<void> _navigateToClosestCourse(BuildContext context) async {
+    try {
+      // Use cache if available, otherwise fetch
+      final courses = _cachedCourses ?? await _fetchCourses();
+      
+      if (courses == null || courses.isEmpty) {
         return;
       }
+
+      // Get current location
+      final position = await _locationService.getCurrentLocation();
+      if (position == null) return;
 
       // Sort by distance and get the closest one
       courses.sort((a, b) {
@@ -87,11 +101,28 @@ class _BottomNavBarState extends State<BottomNavBar> {
 
       // Navigate to the closest course with full details
       if (context.mounted) {
-        context.push('/courses/preview', extra: closestCourse);
+        context.push('/course-details', extra: closestCourse);
       }
     } catch (e) {
       print('Error finding closest course: $e');
     }
+  }
+
+  Future<List?> _fetchCourses() async {
+    final courseIds = await _courseService.getCourseIds();
+    if (courseIds.isEmpty) return null;
+
+    final courseFutures = courseIds.map((courseId) async {
+      try {
+        return await _overpassApiService.fetchCourseDetails(courseId);
+      } catch (e) {
+        return null;
+      }
+    }).toList();
+
+    return (await Future.wait(courseFutures))
+        .where((course) => course != null)
+        .toList();
   }
 
   void _onTap(BuildContext context, int index) {

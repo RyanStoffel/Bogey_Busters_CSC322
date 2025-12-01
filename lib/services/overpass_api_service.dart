@@ -9,7 +9,7 @@ class OverpassApiService {
   //////////////////////////
 
   static const String _baseUrl = 'https://overpass-api.de/api/interpreter';
-  static const int _timeoutSeconds = 2000;
+  static const int _timeoutSeconds = 30;
   static double _milesToMeters(double miles) => miles * 1609.34;
 
   ///////////////////////
@@ -45,31 +45,51 @@ class OverpassApiService {
   }
 
   Future<Course> fetchCourseDetails(String courseId) async {
-    try {
-      final query = _buildCourseDetailsQuery(courseId);
-      final response = await http
-          .post(
-            Uri.parse(_baseUrl),
-            headers: {'Content-Type': 'text/plain'},
-            body: query,
-          )
-          .timeout(Duration(seconds: _timeoutSeconds));
+    const maxRetries = 3;
+    int attempts = 0;
+    Exception? lastError;
 
-      if (response.statusCode != 200) {
-        throw Exception('Failed to fetch course details: ${response.statusCode}');
+    while (attempts < maxRetries) {
+      try {
+        attempts++;
+        print('Fetching course details for $courseId (attempt $attempts/$maxRetries)');
+        
+        final query = _buildCourseDetailsQuery(courseId);
+        final response = await http
+            .post(
+              Uri.parse(_baseUrl),
+              headers: {'Content-Type': 'text/plain'},
+              body: query,
+            )
+            .timeout(Duration(seconds: _timeoutSeconds));
+
+        if (response.statusCode != 200) {
+          throw Exception('HTTP ${response.statusCode}: ${response.reasonPhrase}');
+        }
+
+        final data = json.decode(response.body);
+        final elements = data['elements'] as List<dynamic>;
+
+        if (elements.isEmpty) {
+          throw Exception('No data returned for course: $courseId');
+        }
+
+        final course = _parseCourseDetails(data, courseId);
+        print('Successfully fetched details for ${course.courseName}');
+        return course;
+      } catch (e) {
+        lastError = e is Exception ? e : Exception(e.toString());
+        print('Error fetching course details for $courseId (attempt $attempts): $e');
+        
+        if (attempts < maxRetries) {
+          // Wait before retrying with exponential backoff
+          await Future.delayed(Duration(seconds: attempts));
+          print('Retrying...');
+        }
       }
-
-      final data = json.decode(response.body);
-      final elements = data['elements'] as List<dynamic>;
-
-      if (elements.isEmpty) {
-        throw Exception('Course not found: $courseId');
-      }
-
-      return _parseCourseDetails(data, courseId);
-    } catch (e) {
-      throw Exception('$e');
     }
+
+    throw Exception('Failed to fetch course $courseId after $maxRetries attempts: ${lastError.toString()}');
   }
 
   String _buildNearbyCoursesQuery(

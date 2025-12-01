@@ -26,6 +26,13 @@ service cloud.firestore {
                        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['friends']) &&
                        request.auth.uid in request.resource.data.friends;
       
+      // Allow users to remove themselves from other users' friends array (for removing friends)
+      allow update: if request.auth != null && 
+                       request.auth.uid != userId &&
+                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['friends']) &&
+                       request.auth.uid in resource.data.friends &&
+                       !(request.auth.uid in request.resource.data.friends);
+      
       // Allow users to update both friends and receivedFriendRequests (for notifying acceptance)
       allow update: if request.auth != null && 
                        request.auth.uid != userId &&
@@ -34,10 +41,15 @@ service cloud.firestore {
       
       allow delete: if false; // Block deletes
       
-      // User's rounds subcollection - owner can read/write, friends can read
+      // User's rounds subcollection - owner can read/write, friends can read and add likes/comments
       match /rounds/{roundId} {
         allow read: if request.auth != null && (request.auth.uid == userId || isFriend(userId));
         allow write: if request.auth != null && request.auth.uid == userId;
+        
+        // Allow friends to add/remove likes and comments
+        allow update: if request.auth != null && 
+                         isFriend(userId) &&
+                         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes', 'comments']);
       }
       
       // User's statistics subcollection

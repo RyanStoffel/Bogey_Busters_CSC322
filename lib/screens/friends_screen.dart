@@ -5,6 +5,7 @@ import 'package:golf_tracker_app/services/friend_service.dart';
 import 'package:golf_tracker_app/utils/image_helper.dart';
 import 'package:golf_tracker_app/widgets/course_cards.dart';
 import 'package:golf_tracker_app/widgets/user_search_card.dart';
+import 'package:golf_tracker_app/screens/friends_management_screen.dart';
 
 class FriendsScreen extends StatefulWidget {
   const FriendsScreen({super.key});
@@ -120,7 +121,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
                 padding: EdgeInsets.symmetric(horizontal: 20),
                 child: Row(
                   children: [
-                    Icon(Icons.notifications, color: Color(0xFF6B8E4E)),
+                    Icon(Icons.notifications, color: Colors.green),
                     SizedBox(width: 8),
                     Text(
                       'Notifications',
@@ -168,7 +169,18 @@ class _FriendsScreenState extends State<FriendsScreen> {
                       itemCount: requests.length,
                       itemBuilder: (context, index) {
                         final request = requests[index];
-                        final isAccepted = request['type'] == 'accepted';
+                        final type = request['type'];
+
+                        Widget notificationWidget;
+                        if (type == 'accepted') {
+                          notificationWidget = _buildAcceptedNotification(request);
+                        } else if (type == 'like') {
+                          notificationWidget = _buildLikeNotification(request);
+                        } else if (type == 'comment') {
+                          notificationWidget = _buildCommentNotification(request);
+                        } else {
+                          notificationWidget = _buildFriendRequestNotification(request);
+                        }
 
                         return Card(
                           margin: const EdgeInsets.only(bottom: 12),
@@ -178,9 +190,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
                           ),
                           child: Padding(
                             padding: const EdgeInsets.all(16),
-                            child: isAccepted
-                                ? _buildAcceptedNotification(request)
-                                : _buildFriendRequestNotification(request),
+                            child: notificationWidget,
                           ),
                         );
                       },
@@ -203,7 +213,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
           children: [
             CircleAvatar(
               radius: 20,
-              backgroundColor: const Color(0xFF6B8E4E),
+              backgroundColor: Colors.green,
               child: Text(
                 _getInitials(request['fromUserName'] ?? 'U'),
                 style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
@@ -261,7 +271,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
                 }
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF6B8E4E),
+                backgroundColor: Colors.green,
                 foregroundColor: Colors.white,
               ),
               child: const Text('Accept'),
@@ -301,6 +311,87 @@ class _FriendsScreenState extends State<FriendsScreen> {
     );
   }
 
+  Widget _buildLikeNotification(Map<String, dynamic> request) {
+    return Row(
+      children: [
+        CircleAvatar(
+          radius: 20,
+          backgroundColor: Colors.red,
+          child: const Icon(Icons.favorite, color: Colors.white, size: 20),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            '${request['fromUserName']} liked your round at ${request['courseName']}',
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF2D3E1F),
+            ),
+          ),
+        ),
+        IconButton(
+          icon: const Icon(Icons.close, size: 20),
+          onPressed: () async {
+            await _friendService.clearNotification(request['fromUserId'], request['type'], request['timestamp']);
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCommentNotification(Map<String, dynamic> request) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            CircleAvatar(
+              radius: 20,
+              backgroundColor: Colors.blue,
+              child: const Icon(Icons.comment, color: Colors.white, size: 20),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                '${request['fromUserName']} commented on your round at ${request['courseName']}',
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF2D3E1F),
+                ),
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.close, size: 20),
+              onPressed: () async {
+                await _friendService.clearNotification(request['fromUserId'], request['type'], request['timestamp']);
+              },
+            ),
+          ],
+        ),
+        if (request['comment'] != null) ...[
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.grey[100],
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              '"${request['comment']}"',
+              style: TextStyle(
+                fontSize: 13,
+                fontStyle: FontStyle.italic,
+                color: Colors.grey[700],
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
   String _getInitials(String name) {
     final parts = name.trim().split(' ');
     if (parts.isEmpty) return '?';
@@ -313,6 +404,17 @@ class _FriendsScreenState extends State<FriendsScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Friends'),
+        leading: IconButton(
+          icon: const Icon(Icons.people),
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const FriendsManagementScreen(),
+              ),
+            ).then((_) => _loadFriendsRounds()); // Refresh when returning
+          },
+        ),
         actions: [
           StreamBuilder<int>(
             stream: _friendService.getPendingRequestsCount(),
@@ -344,13 +446,14 @@ class _FriendsScreenState extends State<FriendsScreen> {
           Padding(
             padding: const EdgeInsets.all(16),
             child: TextField(
+              cursorColor: Colors.green,
               controller: _searchController,
               decoration: InputDecoration(
                 hintText: 'Search users...',
-                prefixIcon: const Icon(Icons.search),
+                prefixIcon: const Icon(Icons.search, color: Colors.green),
                 suffixIcon: _isSearching
                     ? IconButton(
-                        icon: const Icon(Icons.clear),
+                        icon: const Icon(Icons.clear, color: Colors.green),
                         onPressed: () {
                           _searchController.clear();
                           setState(() {
@@ -362,17 +465,18 @@ class _FriendsScreenState extends State<FriendsScreen> {
                     : null,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: Colors.green),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: Colors.green, width: 2),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.green.withOpacity(0.5)),
                 ),
                 filled: true,
                 fillColor: Colors.grey[100],
-                // border: OutlineInputBorder(
-                //   borderRadius: BorderRadius.circular(12),
-                //   borderSide: BorderSide.none,
-                // ),
-                // focusedBorder: OutlineInputBorder(
-                //   borderRadius: BorderRadius.circular(12),
-                //   borderSide: const BorderSide(color: Color(0xFF6B8E4E), width: 2),
-                // ),
               ),
               onChanged: (value) {
                 _searchUsers(value);
@@ -459,6 +563,8 @@ class _FriendsScreenState extends State<FriendsScreen> {
           final data = _friendsRounds[index];
           final round = data['round'];
           final friendName = data['friendName'];
+          final friendId = data['friendId'];
+          final roundId = round.roundId;
 
           return CourseCard(
             type: CourseCardType.friendCourseScoreCard,
@@ -469,6 +575,8 @@ class _FriendsScreenState extends State<FriendsScreen> {
             totalScore: round.totalScore,
             relativeToPar: round.relativeToPar,
             friendName: friendName,
+            friendId: friendId,
+            roundId: roundId,
           );
         },
       ),

@@ -8,17 +8,20 @@ import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:golf_tracker_app/models/models.dart';
 import 'package:golf_tracker_app/services/overpass_api_service.dart';
+import 'package:golf_tracker_app/services/round_persistence_service.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:live_activities/live_activities.dart';
 
 class InRoundScreen extends StatefulWidget {
-  final Course course;
-  final String teeColor;
+  final Course? course;
+  final String? teeColor;
+  final bool isResumingRound; // New parameter to indicate if resuming
 
   const InRoundScreen({
     super.key,
     required this.course,
     required this.teeColor,
+    this.isResumingRound = false,
   });
 
   @override
@@ -30,7 +33,12 @@ class _InRoundScreenState extends State<InRoundScreen>
   late GoogleMapController mapController;
   final OverpassApiService _overpassApiService = OverpassApiService();
   final _liveActivitiesPlugin = LiveActivities();
+  final RoundPersistenceService _persistenceService = RoundPersistenceService();
   String? _activityId;
+
+  // Store course and teeColor when loaded from saved state
+  Course? _course;
+  String? _teeColor;
 
   // Store all markers and polygons, but only display current hole
   final Map<int, Set<Marker>> _holeMarkers = {};
@@ -59,6 +67,10 @@ class _InRoundScreenState extends State<InRoundScreen>
   // Animation for live indicator
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
+
+  // Getters that return either widget values or loaded values
+  Course? get course => widget.course ?? _course;
+  String? get teeColor => widget.teeColor ?? _teeColor;
 
   Future<void> startLiveActivity({
     required int holeNumber,
@@ -95,12 +107,12 @@ class _InRoundScreenState extends State<InRoundScreen>
   }
 
   void _updateLiveActivity() {
-    if (_activityId != null && currentHole != null) {
+    if (_activityId != null && currentHole != null && course != null) {
       updateLiveActivity(
         holeNumber: currentHole!.holeNumber,
         distanceToGreen: _distanceToGreen?.round() ?? 0,
         relativeToPar: _relativeToPar,
-        courseName: widget.course.courseName,
+        courseName: course!.courseName,
       );
     }
   }
@@ -113,6 +125,36 @@ class _InRoundScreenState extends State<InRoundScreen>
 
   void _endLiveActivity() {
     endLiveActivity();
+  }
+
+  // NEW: Save round state whenever it changes
+  Future<void> _saveRoundState() async {
+    if (_holes == null || _holes!.isEmpty || course == null || teeColor == null) return;
+
+    await _persistenceService.saveRoundState(
+      course: course!,
+      teeColor: teeColor!,
+      holes: _holes!,
+      holeScores: _holeScores,
+      currentHoleIndex: _currentHoleIndex,
+    );
+  }
+
+  // NEW: Try to load saved round state
+  Future<bool> _tryLoadSavedRound() async {
+    if (!widget.isResumingRound) return false;
+
+    final savedState = await _persistenceService.loadRoundState();
+    if (savedState == null) return false;
+
+    setState(() {
+      _holes = savedState['holes'] as List<Hole>;
+      _holeScores = savedState['holeScores'] as Map<int, int>;
+      _currentHoleIndex = savedState['currentHoleIndex'] as int;
+    });
+
+    print('✅ Resumed round at hole ${_currentHoleIndex + 1}');
+    return true;
   }
 
   @override
@@ -133,14 +175,21 @@ class _InRoundScreenState extends State<InRoundScreen>
     _loadCourseData();
     _startLocationTracking();
 
-    Future.delayed(const Duration(milliseconds: 500), () {
-      if (currentHole != null) {
-        startLiveActivity(
-          holeNumber: currentHole!.holeNumber,
-          distanceToGreen: _distanceToGreen?.round() ?? 0,
-          relativeToPar: _relativeToPar,
-          courseName: widget.course.courseName,
-        );
+    // Start live activity after data is loaded
+    // Wait longer to ensure course data is loaded from saved state
+    Future.delayed(const Duration(milliseconds: 1500), () {
+      if (currentHole != null && course != null) {
+        try {
+          startLiveActivity(
+            holeNumber: currentHole!.holeNumber,
+            distanceToGreen: _distanceToGreen?.round() ?? 0,
+            relativeToPar: _relativeToPar,
+            courseName: course!.courseName,
+          );
+        } catch (e) {
+          print('⚠️ Live Activity error (safe to ignore): $e');
+          // Live Activities might not be initialized - that's okay
+        }
       }
     });
   }
@@ -352,11 +401,11 @@ class _InRoundScreenState extends State<InRoundScreen>
   }
 
   TeeBox? get currentTeeBox {
-    if (currentHole?.teeBoxes == null) return null;
+    if (currentHole?.teeBoxes == null || teeColor == null) return null;
 
     // Try to find exact match first
     var teeBox = currentHole!.teeBoxes!.firstWhere(
-      (tee) => tee.tee.toLowerCase() == widget.teeColor.toLowerCase(),
+      (tee) => tee.tee.toLowerCase() == teeColor!.toLowerCase(),
       orElse: () {
         // Try to find a shared tee that contains this color
         return currentHole!.teeBoxes!.firstWhere(
@@ -364,7 +413,7 @@ class _InRoundScreenState extends State<InRoundScreen>
               .toLowerCase()
               .split(';')
               .map((c) => c.trim())
-              .contains(widget.teeColor.toLowerCase()),
+              .contains(teeColor!.toLowerCase()),
           orElse: () => currentHole!.teeBoxes!.first,
         );
       },
@@ -391,10 +440,56 @@ class _InRoundScreenState extends State<InRoundScreen>
       _isLoadingHoleData = true;
     });
 
+    // NEW: If course is null, we MUST load from saved state
+    if (widget.course == null || widget.teeColor == null) {
+      final savedState = await _persistenceService.loadRoundState();
+      if (savedState == null) {
+        // This shouldn't happen, but handle it gracefully
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No active round found')),
+          );
+          context.go('/courses');
+        }
+        return;
+      }
+      
+      // Load the course and teeColor from saved state and store in state variables
+      setState(() {
+        _course = savedState['course'] as Course;
+        _teeColor = savedState['teeColor'] as String;
+        _holes = savedState['holes'] as List<Hole>;
+        _holeScores = savedState['holeScores'] as Map<int, int>;
+        _currentHoleIndex = savedState['currentHoleIndex'] as int;
+        _isLoadingHoleData = false;
+      });
+      
+      _updateDistanceToGreen();
+      _updatePolylineToGreen();
+      _moveCameraToCurrentHole();
+      print('✅ Resumed round from automatic redirect at hole ${_currentHoleIndex + 1}');
+      return;
+    }
+
+    // NEW: Try to load saved round first (when explicitly resuming)
+    final resumedFromSave = await _tryLoadSavedRound();
+    
+    if (resumedFromSave) {
+      // If we resumed from save, we still need to fetch course details for markers
+      // but we don't need to reset the state
+      setState(() {
+        _isLoadingHoleData = false;
+      });
+      _updateDistanceToGreen();
+      _updatePolylineToGreen();
+      _moveCameraToCurrentHole();
+      return;
+    }
+
     try {
-      print('Fetching course details for ${widget.course.courseId}');
+      print('Fetching course details for ${course!.courseId}');
       final courseDetails = await _overpassApiService.fetchCourseDetails(
-        widget.course.courseId,
+        course!.courseId,
       );
 
       final holes = courseDetails.holes ?? [];
@@ -413,14 +508,14 @@ class _InRoundScreenState extends State<InRoundScreen>
         if (hole.teeBoxes != null && hole.teeBoxes!.isNotEmpty) {
           // Try exact match first, then fuzzy match for shared tees
           final selectedTee = hole.teeBoxes!.firstWhere(
-            (tee) => tee.tee.toLowerCase() == widget.teeColor.toLowerCase(),
+            (tee) => tee.tee.toLowerCase() == teeColor!.toLowerCase(),
             orElse: () {
               return hole.teeBoxes!.firstWhere(
                 (tee) => tee.tee
                     .toLowerCase()
                     .split(';')
                     .map((c) => c.trim())
-                    .contains(widget.teeColor.toLowerCase()),
+                    .contains(teeColor!.toLowerCase()),
                 orElse: () => hole.teeBoxes!.first,
               );
             },
@@ -500,16 +595,19 @@ class _InRoundScreenState extends State<InRoundScreen>
         _isLoadingHoleData = false;
       });
 
+      // NEW: Save initial round state
+      await _saveRoundState();
+
       // Update distance and polyline after holes are loaded
       _updateDistanceToGreen();
       _updatePolylineToGreen();
-      // After: _moveCameraToCurrentHole();
+      
       if (Platform.isIOS && currentHole != null) {
         startLiveActivity(
           holeNumber: currentHole!.holeNumber,
           distanceToGreen: _distanceToGreen?.round() ?? 0,
           relativeToPar: _relativeToPar,
-          courseName: widget.course.courseName,
+          courseName: course!.courseName,
         );
       }
 
@@ -565,6 +663,25 @@ class _InRoundScreenState extends State<InRoundScreen>
           );
         } catch (e) {
           print('Error moving to green location: $e');
+        }
+        return;
+      }
+      
+      // Last resort: use course center if available
+      if (course?.location.latitude != null && course?.location.longitude != null) {
+        print('Using course center as fallback');
+        try {
+          await mapController.animateCamera(
+            CameraUpdate.newCameraPosition(
+              CameraPosition(
+                target: LatLng(course!.location.latitude!, course!.location.longitude!),
+                zoom: 16.0,
+                tilt: 0,
+              ),
+            ),
+          );
+        } catch (e) {
+          print('Error moving to course center: $e');
         }
       }
       return;
@@ -649,6 +766,12 @@ class _InRoundScreenState extends State<InRoundScreen>
     if (currentHole == null) return;
 
     final doublePar = (currentHole!.par ?? 4) * 2;
+    final bool isHoleCompleted = _holeScores.containsKey(currentHole!.holeNumber);
+    
+    // If editing existing score, load it
+    if (isHoleCompleted && _currentScore == null) {
+      _currentScore = _holeScores[currentHole!.holeNumber];
+    }
 
     showModalBottomSheet(
       context: context,
@@ -676,7 +799,14 @@ class _InRoundScreenState extends State<InRoundScreen>
                   ),
                   IconButton(
                     icon: const Icon(Icons.close),
-                    onPressed: () => Navigator.pop(context),
+                    onPressed: () {
+                      // Reset score if cancelling
+                      if (!isHoleCompleted) {
+                        _currentScore = null;
+                        _currentPutts = null;
+                      }
+                      Navigator.pop(context);
+                    },
                   ),
                 ],
               ),
@@ -782,7 +912,9 @@ class _InRoundScreenState extends State<InRoundScreen>
                     ),
                   ),
                   child: Text(
-                    'Finish Hole ${currentHole!.holeNumber}',
+                    isHoleCompleted 
+                        ? 'Update Hole ${currentHole!.holeNumber}'
+                        : 'Finish Hole ${currentHole!.holeNumber}',
                     style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
@@ -790,12 +922,81 @@ class _InRoundScreenState extends State<InRoundScreen>
                   ),
                 ),
               ),
+              
+              // Finish Round Early button (only show if at least one hole completed)
+              if (_holeScores.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: OutlinedButton(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      _showFinishRoundEarlyDialog();
+                    },
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.orange,
+                      side: const BorderSide(color: Colors.orange, width: 2),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: const Text(
+                      'Finish Round Early',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+              
               SizedBox(height: MediaQuery.of(context).viewInsets.bottom),
             ],
           ),
         ),
       ),
     );
+  }
+
+  // NEW: Show finish round early confirmation
+  Future<void> _showFinishRoundEarlyDialog() async {
+    final shouldFinish = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        final completedHoles = _holeScores.length;
+        final totalHoles = _holes?.length ?? 18;
+        
+        return AlertDialog(
+          title: const Text('Finish Round Early?'),
+          content: Text(
+            'You\'ve completed $completedHoles of $totalHoles holes.\n\n'
+            'Do you want to finish the round now? Your score will be recorded for the holes you\'ve completed.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Continue Playing'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.orange,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Finish Round'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldFinish == true) {
+      _endLiveActivity();
+      await _persistenceService.clearRoundState();
+      _navigateToEndOfRound();
+    }
   }
 
   Widget _buildScoreChip(int value, bool isSelected, VoidCallback onTap,
@@ -827,10 +1028,13 @@ class _InRoundScreenState extends State<InRoundScreen>
     );
   }
 
-  void _finishHole() {
+  void _finishHole() async { // Made async
     // Save hole score
     _holeScores[currentHole!.holeNumber] = _currentScore!;
     print('Hole ${currentHole!.holeNumber}: Score=$_currentScore, Putts=$_currentPutts');
+
+    // NEW: Save round state after finishing a hole
+    await _saveRoundState();
 
     // Move to next hole
     if (_currentHoleIndex < (_holes?.length ?? 0) - 1) {
@@ -850,12 +1054,14 @@ class _InRoundScreenState extends State<InRoundScreen>
     } else {
       // Round complete - end Live Activity and navigate to end screen
       _endLiveActivity();
+      // NEW: Clear saved round state when completing
+      await _persistenceService.clearRoundState();
       _navigateToEndOfRound();
     }
   }
 
   void _navigateToEndOfRound() {
-    if (_holes == null || _holes!.isEmpty) {
+    if (_holes == null || _holes!.isEmpty || course == null || teeColor == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Error: No hole data available'),
@@ -868,12 +1074,48 @@ class _InRoundScreenState extends State<InRoundScreen>
     context.pushReplacement(
       '/end-of-round',
       extra: {
-        'course': widget.course,
-        'teeColor': widget.teeColor,
+        'course': course!,
+        'teeColor': teeColor!,
         'holes': _holes!,
         'holeScores': _holeScores,
       },
     );
+  }
+
+  // NEW: Show cancel round confirmation
+  Future<bool> _showCancelRoundDialog() async {
+    final shouldCancel = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Cancel Round?'),
+          content: const Text(
+            'Are you sure you want to cancel this round? Your progress will be lost.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Continue Round'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.red,
+              ),
+              child: const Text('Cancel Round'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldCancel == true) {
+      await _persistenceService.clearRoundState();
+      _endLiveActivity();
+      return true;
+    }
+
+    return false;
   }
 
   void _onMapCreated(GoogleMapController controller) {
@@ -885,9 +1127,18 @@ class _InRoundScreenState extends State<InRoundScreen>
     if (_isLoadingHoleData) {
       return Scaffold(
         appBar: AppBar(
-          title: Text(widget.course.courseName),
+          title: Text(course?.courseName ?? 'Loading...'),
           backgroundColor: const Color(0xFF6B8E4E),
           foregroundColor: Colors.white,
+          leading: IconButton(
+            icon: const Icon(Icons.close),
+            onPressed: () async {
+              final shouldCancel = await _showCancelRoundDialog();
+              if (shouldCancel && context.mounted) {
+                context.go('/courses');
+              }
+            },
+          ),
         ),
         body: const Center(
           child: Column(
@@ -902,65 +1153,59 @@ class _InRoundScreenState extends State<InRoundScreen>
       );
     }
 
-    return Scaffold(
-      body: Stack(
-        children: [
-          // Map
-          GoogleMap(
-            onMapCreated: _onMapCreated,
-            mapType: MapType.satellite,
-            initialCameraPosition: CameraPosition(
-              target: LatLng(
-                widget.course.location.latitude!,
-                widget.course.location.longitude!,
+    return PopScope(
+      canPop: false,
+      onPopInvoked: (didPop) async {
+        if (didPop) return;
+        
+        final shouldExit = await _showCancelRoundDialog();
+        if (shouldExit && context.mounted) {
+          context.go('/courses');
+        }
+      },
+      child: Scaffold(
+        body: Stack(
+          children: [
+            // Map
+            GoogleMap(
+              onMapCreated: _onMapCreated,
+              mapType: MapType.satellite,
+              initialCameraPosition: CameraPosition(
+                target: course?.location.latitude != null && course?.location.longitude != null
+                    ? LatLng(
+                        course!.location.latitude!,
+                        course!.location.longitude!,
+                      )
+                    : currentHole?.greenLocation?.latitude != null && currentHole?.greenLocation?.longitude != null
+                        ? LatLng(
+                            currentHole!.greenLocation!.latitude!,
+                            currentHole!.greenLocation!.longitude!,
+                          )
+                        : const LatLng(0, 0), // Fallback to 0,0 if nothing available
+                zoom: 16.0,
               ),
-              zoom: 16.0,
+              markers: _currentMarkers,
+              polygons: _currentPolygons,
+              polylines: _polylines,
+              myLocationEnabled: true,
+              myLocationButtonEnabled: false,
+              compassEnabled: false,
+              mapToolbarEnabled: false,
             ),
-            markers: _currentMarkers,
-            polygons: _currentPolygons,
-            polylines: _polylines,
-            myLocationEnabled: true,
-            myLocationButtonEnabled: false,
-            compassEnabled: false,
-            mapToolbarEnabled: false,
-          ),
 
-          // Hole Info Header with Back Button
-          if (currentHole != null)
-            Positioned(
-              top: MediaQuery.of(context).padding.top + 16,
-              left: 16,
-              right: 16,
-              child: Row(
-                children: [
-                  // Back Button
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.2),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: IconButton(
-                      icon: const Icon(Icons.arrow_back, size: 20),
-                      onPressed: () => Navigator.pop(context),
-                      padding: const EdgeInsets.all(8),
-                      constraints: const BoxConstraints(),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  // Hole Info
-                  Expanded(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            // Hole Info Header with Back Button
+            if (currentHole != null)
+              Positioned(
+                top: MediaQuery.of(context).padding.top + 16,
+                left: 16,
+                right: 16,
+                child: Row(
+                  children: [
+                    // Back Button - now shows cancel dialog
+                    Container(
                       decoration: BoxDecoration(
                         color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
+                        shape: BoxShape.circle,
                         boxShadow: [
                           BoxShadow(
                             color: Colors.black.withOpacity(0.2),
@@ -969,77 +1214,219 @@ class _InRoundScreenState extends State<InRoundScreen>
                           ),
                         ],
                       ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Row(
-                            children: [
-                              CircleAvatar(
-                                backgroundColor: const Color(0xFF6B8E4E),
-                                radius: 16,
-                                child: Text(
-                                  '#${currentHole!.holeNumber}',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
+                      child: IconButton(
+                        icon: const Icon(Icons.close, size: 20),
+                        onPressed: () async {
+                          final shouldCancel = await _showCancelRoundDialog();
+                          if (shouldCancel && context.mounted) {
+                            context.go('/courses');
+                          }
+                        },
+                        padding: const EdgeInsets.all(8),
+                        constraints: const BoxConstraints(),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    // Hole Info with Navigation
+                    Expanded(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(12),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.2),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            // Previous Hole Button
+                            IconButton(
+                              icon: const Icon(Icons.chevron_left, size: 24),
+                              onPressed: _currentHoleIndex > 0
+                                  ? () {
+                                      setState(() {
+                                        _currentHoleIndex--;
+                                        _currentScore = _holeScores[currentHole!.holeNumber];
+                                        _currentPutts = null; // We don't save putts
+                                      });
+                                      _updateDistanceToGreen();
+                                      _updatePolylineToGreen();
+                                      _moveCameraToCurrentHole();
+                                      _updateLiveActivity();
+                                    }
+                                  : null,
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
+                              color: _currentHoleIndex > 0 ? const Color(0xFF6B8E4E) : Colors.grey[300],
+                            ),
+                            const SizedBox(width: 8),
+                            // Hole Info
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.center,
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  Text(
-                                    'Par ${currentHole!.par ?? "?"}',
-                                    style: const TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.bold,
-                                    ),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      CircleAvatar(
+                                        backgroundColor: const Color(0xFF6B8E4E),
+                                        radius: 12,
+                                        child: Text(
+                                          '${currentHole!.holeNumber}',
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 10,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        'Par ${currentHole!.par ?? "?"}',
+                                        style: const TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                   Text(
-                                    '${widget.teeColor} ${currentTeeBox?.yards?.toString() ?? "?"} yds',
+                                    '${teeColor ?? "?"} ${currentTeeBox?.yards?.toString() ?? "?"} yds • HCP ${currentHole!.handicap?.toString() ?? "?"}',
                                     style: TextStyle(
-                                      fontSize: 10,
+                                      fontSize: 9,
                                       color: Colors.grey[600],
                                     ),
                                   ),
                                 ],
                               ),
-                            ],
-                          ),
-                          Text(
-                            'HCP ${currentHole!.handicap?.toString() ?? "?"}',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey[700],
-                              fontWeight: FontWeight.w600,
                             ),
-                          ),
-                        ],
+                            const SizedBox(width: 8),
+                            // Next Hole Button
+                            IconButton(
+                              icon: const Icon(Icons.chevron_right, size: 24),
+                              onPressed: _currentHoleIndex < (_holes?.length ?? 0) - 1
+                                  ? () {
+                                      setState(() {
+                                        _currentHoleIndex++;
+                                        _currentScore = _holeScores[currentHole!.holeNumber];
+                                        _currentPutts = null;
+                                      });
+                                      _updateDistanceToGreen();
+                                      _updatePolylineToGreen();
+                                      _moveCameraToCurrentHole();
+                                      _updateLiveActivity();
+                                    }
+                                  : null,
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
+                              color: _currentHoleIndex < (_holes?.length ?? 0) - 1
+                                  ? const Color(0xFF6B8E4E)
+                                  : Colors.grey[300],
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
-            ),
 
-          // Distance to Green Indicator (below floating button)
-          if (_distanceToGreen != null && currentHole != null)
-            Positioned(
-              bottom: 100, // Position above the floating button
-              left: 0,
-              right: 0,
-              child: Center(
+            // Distance to Green Indicator (below floating button)
+            if (_distanceToGreen != null && currentHole != null)
+              Positioned(
+                bottom: 100, // Position above the floating button
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.yellow.shade700,
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.2),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Live indicator (pulsing dot)
+                        AnimatedBuilder(
+                          animation: _pulseAnimation,
+                          builder: (context, child) {
+                            return Container(
+                              width: 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                color: Colors.red,
+                                shape: BoxShape.circle,
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.red.withOpacity(_pulseAnimation.value),
+                                    blurRadius: 4 * _pulseAnimation.value,
+                                    spreadRadius: 2 * _pulseAnimation.value,
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                        const SizedBox(width: 8),
+                        const Text(
+                          'LIVE',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Container(
+                          width: 1,
+                          height: 20,
+                          color: Colors.white.withOpacity(0.5),
+                        ),
+                        const SizedBox(width: 12),
+                        const SizedBox(width: 6),
+                        Text(
+                          '${_distanceToGreen!.round()} yds',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+
+            // Live Score Indicator (Bottom Right, more compact design)
+            if (_holeScores.isNotEmpty)
+              Positioned(
+                bottom: 32,
+                right: 16,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                   decoration: BoxDecoration(
-                    color: Colors.yellow.shade700,
-                    borderRadius: BorderRadius.circular(12),
+                    color: Colors.white.withOpacity(0.95),
+                    borderRadius: BorderRadius.circular(20),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.2),
+                        color: Colors.black.withOpacity(0.15),
                         blurRadius: 8,
                         offset: const Offset(0, 2),
                       ),
@@ -1048,137 +1435,66 @@ class _InRoundScreenState extends State<InRoundScreen>
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // Live indicator (pulsing dot)
-                      AnimatedBuilder(
-                        animation: _pulseAnimation,
-                        builder: (context, child) {
-                          return Container(
-                            width: 8,
-                            height: 8,
-                            decoration: BoxDecoration(
-                              color: Colors.red,
-                              shape: BoxShape.circle,
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.red.withOpacity(_pulseAnimation.value),
-                                  blurRadius: 4 * _pulseAnimation.value,
-                                  spreadRadius: 2 * _pulseAnimation.value,
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                      ),
-                      const SizedBox(width: 8),
-                      const Text(
-                        'LIVE',
+                      Text(
+                        _relativeToPar == 0
+                            ? 'E'
+                            : '${_relativeToPar > 0 ? '+' : ''}$_relativeToPar',
                         style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 11,
+                          fontSize: 20,
                           fontWeight: FontWeight.bold,
-                          letterSpacing: 0.5,
+                          color: _relativeToPar > 0
+                              ? Colors.red
+                              : _relativeToPar < 0
+                                  ? Colors.green
+                                  : Colors.grey[800],
                         ),
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 6),
                       Container(
                         width: 1,
                         height: 20,
-                        color: Colors.white.withOpacity(0.5),
+                        color: Colors.grey[300],
                       ),
-                      const SizedBox(width: 12),
                       const SizedBox(width: 6),
                       Text(
-                        '${_distanceToGreen!.round()} yds',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
+                        'T${_holeScores.length}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey[700],
                         ),
                       ),
                     ],
                   ),
                 ),
               ),
-            ),
 
-          // Live Score Indicator (Bottom Right, more compact design)
-          if (_holeScores.isNotEmpty)
-            Positioned(
-              bottom: 32,
-              right: 16,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.95),
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.15),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      _relativeToPar == 0
-                          ? 'E'
-                          : '${_relativeToPar > 0 ? '+' : ''}$_relativeToPar',
-                      style: TextStyle(
-                        fontSize: 20,
+            // Floating Hole Button (centered at bottom)
+            if (currentHole != null)
+              Positioned(
+                bottom: 32,
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: FloatingActionButton.extended(
+                    onPressed: _showScoreBottomSheet,
+                    backgroundColor: const Color(0xFF6B8E4E),
+                    icon: const Icon(Icons.golf_course, color: Colors.white),
+                    label: Text(
+                      _holeScores.containsKey(currentHole!.holeNumber)
+                          ? 'Edit Hole ${currentHole!.holeNumber}'
+                          : 'Hole ${currentHole!.holeNumber}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
                         fontWeight: FontWeight.bold,
-                        color: _relativeToPar > 0
-                            ? Colors.red
-                            : _relativeToPar < 0
-                                ? Colors.green
-                                : Colors.grey[800],
                       ),
-                    ),
-                    const SizedBox(width: 6),
-                    Container(
-                      width: 1,
-                      height: 20,
-                      color: Colors.grey[300],
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      'T${_holeScores.length}',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.grey[700],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-          // Floating Hole Button (centered at bottom)
-          if (currentHole != null)
-            Positioned(
-              bottom: 32,
-              left: 0,
-              right: 0,
-              child: Center(
-                child: FloatingActionButton.extended(
-                  onPressed: _showScoreBottomSheet,
-                  backgroundColor: const Color(0xFF6B8E4E),
-                  icon: const Icon(Icons.golf_course, color: Colors.white),
-                  label: Text(
-                    'Hole ${currentHole!.holeNumber}',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
                     ),
                   ),
                 ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }

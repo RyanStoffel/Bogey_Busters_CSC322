@@ -17,6 +17,7 @@ import 'package:golf_tracker_app/screens/verify_email_screen.dart';
 import 'package:golf_tracker_app/screens/in_round_screen.dart';
 import 'package:golf_tracker_app/screens/end_of_round_screen.dart';
 import 'package:golf_tracker_app/models/models.dart';
+import 'package:golf_tracker_app/services/round_persistence_service.dart';
 
 class AuthNotifier extends ChangeNotifier {
   AuthNotifier() {
@@ -39,6 +40,7 @@ final GoRouter screenRouter = GoRouter(
     final isOnAuthScreen = state.uri.path == '/auth';
     final isOnVerifyEmail = state.uri.path == '/verify-email';
     final isOnOnboarding = state.uri.path == '/onboarding';
+    final isOnInRound = state.uri.path == '/in-round';
 
     if (isOnSplashScreen) return null;
 
@@ -74,6 +76,15 @@ final GoRouter screenRouter = GoRouter(
           // If we can't check, assume they need onboarding
           return '/onboarding';
         }
+        
+        // Check for active round before going to courses
+        final persistenceService = RoundPersistenceService();
+        final hasActiveRound = await persistenceService.hasActiveRound();
+        
+        if (hasActiveRound) {
+          return '/in-round';
+        }
+        
         return '/courses';
       }
 
@@ -83,7 +94,7 @@ final GoRouter screenRouter = GoRouter(
       }
 
       // If verified but not on onboarding page, check if onboarding is needed
-      if (user.emailVerified && !isOnOnboarding) {
+      if (user.emailVerified && !isOnOnboarding && !isOnInRound) {
         try {
           final doc = await FirebaseFirestore.instance
               .collection('users')
@@ -96,6 +107,14 @@ final GoRouter screenRouter = GoRouter(
 
             if (!onboardingCompleted) {
               return '/onboarding';
+            }
+            
+            // After onboarding check, also check for active round
+            final persistenceService = RoundPersistenceService();
+            final hasActiveRound = await persistenceService.hasActiveRound();
+            
+            if (hasActiveRound) {
+              return '/in-round';
             }
           } else {
             return '/onboarding';
@@ -146,10 +165,29 @@ final GoRouter screenRouter = GoRouter(
     GoRoute(
       path: '/in-round',
       builder: (context, state) {
-        final data = state.extra as Map<String, dynamic>;
-        final course = data['course'] as Course;
-        final teeColor = data['teeColor'] as String;
-        return InRoundScreen(course: course, teeColor: teeColor);
+        // The screen will handle loading saved state in initState
+        // Just pass through the extra data if it exists
+        final data = state.extra as Map<String, dynamic>?;
+        
+        if (data != null) {
+          // Starting/resuming from course selection screen
+          final course = data['course'] as Course;
+          final teeColor = data['teeColor'] as String;
+          final isResuming = data['isResumingRound'] as bool? ?? false;
+          
+          return InRoundScreen(
+            course: course,
+            teeColor: teeColor,
+            isResumingRound: isResuming,
+          );
+        } else {
+          // Coming from automatic redirect - screen will load state
+          return const InRoundScreen(
+            course: null,
+            teeColor: null,
+            isResumingRound: true,
+          );
+        }
       },
     ),
     GoRoute(
@@ -172,10 +210,16 @@ final GoRouter screenRouter = GoRouter(
       builder: (context, state, body) {
         int currentIndex = 0;
         final location = state.uri.path;
+        
+        // Check for 'from' query parameter to track navigation source
+        final fromParam = state.uri.queryParameters['from'];
 
-        if (location.startsWith('/friends')) {
+        // Determine which tab should be highlighted
+        if (fromParam == 'play' || location.startsWith('/friends')) {
+          // If navigated from play button OR on friends screen
           currentIndex = 0;
         } else if (location.startsWith('/courses')) {
+          // Only highlight courses if actually on courses, not from play button
           currentIndex = 1;
         } else if (location.startsWith('/in-round-screen')) {
           currentIndex = 2;
@@ -212,23 +256,6 @@ final GoRouter screenRouter = GoRouter(
             ),
           ],
         ),
-        // GoRoute(
-        //   path: '/play',
-        //   pageBuilder: (context, state) => NoTransitionPage(
-        //     child: const PlayScreen(),
-        //   ),
-        //   routes: [
-        //     GoRoute(
-        //       path: 'course/:courseId',
-        //       pageBuilder: (context, state) {
-        //         final courseId = Uri.decodeComponent(state.pathParameters['courseId']!);
-        //         return NoTransitionPage(
-        //           child: CoursePreviewScreen(courseId: courseId),
-        //         );
-        //       },
-        //     ),
-        //   ],
-        // ),
         GoRoute(
           path: '/profile',
           pageBuilder: (context, state) => NoTransitionPage(

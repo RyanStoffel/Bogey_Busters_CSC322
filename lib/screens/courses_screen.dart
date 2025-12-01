@@ -118,22 +118,33 @@ class _CoursesScreenState extends State<CoursesScreen> {
       final detailFutures = courseIds.map((courseId) async {
         try {
           print('Loading details for $courseId');
-          // Fetch complete course details including holes and tee boxes
-          return await _overpassApiService.fetchCourseDetails(courseId);
+          final course = await _overpassApiService.fetchCourseDetails(courseId);
+          print('✓ Successfully loaded ${course.courseName}');
+          return course;
         } catch (e) {
-          // If fetching details fails for a course, return null
-          print('Failed to fetch details for $courseId: $e');
+          print('✗ Failed to fetch details for $courseId: $e');
+          // Try to get basic info from the course ID
+          try {
+            final basicCourse = await _courseService.getCourseBasicInfo(courseId);
+            if (basicCourse != null) {
+              print('✓ Loaded basic info for ${basicCourse.courseName}');
+              return basicCourse;
+            }
+          } catch (e2) {
+            print('✗ Failed to get basic info: $e2');
+          }
           return null;
         }
       }).toList();
 
       // Wait for all course details to be fetched at once
-      final detailedCourses = (await Future.wait(detailFutures))
+      final results = await Future.wait(detailFutures);
+      final detailedCourses = results
           .where((course) => course != null)
           .cast<Course>()
           .toList();
 
-      // Sort courses by distance
+      print('Successfully loaded ${detailedCourses.length}/${courseIds.length} courses with full details');
       detailedCourses.sort((a, b) {
         double distanceA = Geolocator.distanceBetween(
           latitude,
@@ -200,13 +211,15 @@ class _CoursesScreenState extends State<CoursesScreen> {
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: TextField(
+              cursorColor: Colors.green,
+              
               controller: _searchController,
               decoration: InputDecoration(
                 hintText: 'Search courses...',
-                prefixIcon: const Icon(Icons.search),
+                prefixIcon: const Icon(Icons.search, color: Colors.green),
                 suffixIcon: _searchQuery.isNotEmpty
                     ? IconButton(
-                        icon: const Icon(Icons.clear),
+                        icon: const Icon(Icons.clear, color: Colors.green),
                         onPressed: () {
                           _searchController.clear();
                         },
@@ -214,6 +227,15 @@ class _CoursesScreenState extends State<CoursesScreen> {
                     : null,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: Colors.green),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: Colors.green, width: 2),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.green.withOpacity(0.5)),
                 ),
                 filled: true,
                 fillColor: Colors.grey[100],
@@ -234,10 +256,6 @@ class _CoursesScreenState extends State<CoursesScreen> {
                         SizedBox(height: 16),
                         Text('Loading nearby courses...'),
                         SizedBox(height: 8),
-                        Text(
-                          'Fetching complete course details',
-                          style: TextStyle(fontSize: 12, color: Colors.grey),
-                        ),
                       ],
                     ),
                   );

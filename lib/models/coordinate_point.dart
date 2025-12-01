@@ -18,8 +18,8 @@ class CoordinatePoint {
   // Create from JSON
   factory CoordinatePoint.fromJson(Map<String, dynamic> json) {
     return CoordinatePoint(
-      latitude: json['latitude'] as double,
-      longitude: json['longitude'] as double,
+      latitude: (json['latitude'] as num?)?.toDouble(),
+      longitude: (json['longitude'] as num?)?.toDouble(),
     );
   }
 

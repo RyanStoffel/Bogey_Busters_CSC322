@@ -68,7 +68,7 @@ class ProfileScreen extends StatelessWidget {
                     return const Center(
                       child: Padding(
                         padding: EdgeInsets.all(32.0),
-                        child: CircularProgressIndicator(),
+                        child: CircularProgressIndicator(color: Colors.green,),
                       ),
                     );
                   }
@@ -127,6 +127,7 @@ class ProfileScreen extends StatelessWidget {
                                           child: Center(
                                             child: CircularProgressIndicator(
                                               strokeWidth: 2,
+                                              color: Colors.green,
                                             ),
                                           ),
                                         );
@@ -213,7 +214,7 @@ class ProfileScreen extends StatelessWidget {
                                                   TextButton(
                                                     onPressed: () =>
                                                         Navigator.of(context).pop(false),
-                                                    child: const Text('Cancel'),
+                                                    child: const Text(style: TextStyle(color: Colors.black), 'Cancel'),
                                                   ),
                                                   TextButton(
                                                     onPressed: () =>
@@ -280,7 +281,7 @@ class ProfileScreen extends StatelessWidget {
                           return const Center(
                             child: Padding(
                               padding: EdgeInsets.all(32.0),
-                              child: CircularProgressIndicator(),
+                              child: CircularProgressIndicator(color: Colors.green,),
                             ),
                           );
                         }

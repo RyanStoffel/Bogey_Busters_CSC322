@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:golf_tracker_app/models/models.dart';
 
 class CourseService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
@@ -17,6 +18,52 @@ class CourseService {
     } catch (e) {
       print('Error fetching course IDs from Firebase: $e');
       return [];
+    }
+  }
+
+  /// Get basic course info from Firebase when Overpass API fails
+  Future<Course?> getCourseBasicInfo(String courseId) async {
+    try {
+      final snapshot = await _firestore
+          .collection('courses')
+          .where('courseId', isEqualTo: courseId)
+          .limit(1)
+          .get();
+
+      if (snapshot.docs.isEmpty) {
+        return null;
+      }
+
+      final data = snapshot.docs.first.data();
+      
+      // Extract latitude and longitude
+      double? lat;
+      double? lon;
+      if (data['location'] != null && data['location'] is Map) {
+        lat = (data['location']['latitude'] as num?)?.toDouble();
+        lon = (data['location']['longitude'] as num?)?.toDouble();
+      }
+
+      if (lat == null || lon == null) {
+        return null;
+      }
+
+      return Course(
+        courseId: courseId,
+        courseName: data['courseName'] ?? data['name'] ?? 'Unknown Course',
+        location: CoordinatePoint(latitude: lat, longitude: lon),
+        totalPar: data['totalPar'] as int? ?? data['par'] as int?,
+        courseStreetAddress: data['courseStreetAddress'] as String?,
+        courseHouseNumber: data['courseHouseNumber'] as String?,
+        courseCity: data['courseCity'] as String?,
+        courseState: data['courseState'] as String?,
+        coursePostalCode: data['coursePostalCode'] as String?,
+        phoneNumber: data['phoneNumber'] as String?,
+        website: data['website'] as String?,
+      );
+    } catch (e) {
+      print('Error fetching basic course info from Firebase: $e');
+      return null;
     }
   }
 

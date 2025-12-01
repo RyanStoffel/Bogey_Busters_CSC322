@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 class User {
   User({
     required this.uid,
@@ -35,18 +37,25 @@ class User {
 
   // Create from JSON from Firestore
   factory User.fromJson(Map<String, dynamic> json) {
+    DateTime? createdAtDateTime;
+    if (json['createdAt'] != null) {
+      if (json['createdAt'] is Timestamp) {
+        createdAtDateTime = (json['createdAt'] as Timestamp).toDate();
+      } else if (json['createdAt'] is String) {
+        createdAtDateTime = DateTime.parse(json['createdAt'] as String);
+      }
+    }
+
     return User(
       uid: json['uid'] as String,
       email: json['email'] as String,
       displayName: json['displayName'] as String?,
       profilePictureUrl: json['profilePictureUrl'] as String?,
-      handicap: json['handicap'] as double?,
+      handicap: (json['handicap'] as num?)?.toDouble(),
       favoriteCoursesIds: (json['favoriteCoursesIds'] as List<dynamic>?)
           ?.map((e) => e as String)
           .toList(),
-      createdAt: json['createdAt'] != null
-          ? DateTime.parse(json['createdAt'] as String)
-          : null,
+      createdAt: createdAtDateTime,
       isAdmin: json['isAdmin'] as bool? ?? false,
     );
   }

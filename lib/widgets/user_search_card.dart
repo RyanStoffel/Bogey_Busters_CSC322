@@ -98,7 +98,7 @@ class _UserSearchCardState extends State<UserSearchCard> {
             // Profile Picture
             CircleAvatar(
               radius: 30,
-              backgroundColor: const Color(0xFF6B8E4E),
+              backgroundColor: Colors.green,
               backgroundImage: widget.user.profilePictureUrl != null &&
                       widget.user.profilePictureUrl!.isNotEmpty
                   ? NetworkImage(widget.user.profilePictureUrl!)
@@ -179,7 +179,7 @@ class _UserSearchCardState extends State<UserSearchCard> {
               ElevatedButton(
                 onPressed: _isLoading ? null : _sendFriendRequest,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF6B8E4E),
+                  backgroundColor: Colors.green,
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8),

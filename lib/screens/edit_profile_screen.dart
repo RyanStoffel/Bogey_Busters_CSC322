@@ -184,7 +184,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         ),
         body: _isLoading
             ? const Center(
-                child: CircularProgressIndicator(),
+                child: CircularProgressIndicator(color: Colors.green,),
               )
             : Center(
                 child: SingleChildScrollView(
@@ -384,7 +384,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                                     height: 20,
                                     child: CircularProgressIndicator(
                                       strokeWidth: 2,
-                                      color: Colors.white,
+                                      color: Colors.green,
                                     ),
                                   )
                                 : const Text(

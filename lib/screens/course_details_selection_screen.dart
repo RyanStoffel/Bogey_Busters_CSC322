@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:golf_tracker_app/models/models.dart';
+import 'package:golf_tracker_app/services/round_persistence_service.dart';
 
 class CourseDetailsSelectionScreen extends StatefulWidget {
   final Course course;
@@ -16,14 +17,28 @@ class CourseDetailsSelectionScreen extends StatefulWidget {
 }
 
 class _CourseDetailsSelectionScreenState extends State<CourseDetailsSelectionScreen> {
+  final RoundPersistenceService _persistenceService = RoundPersistenceService();
   String? selectedTeeColor;
   List<String> availableTees = [];
   Map<String, List<String>> _teeBoxMapping = {}; // Display color -> actual API tee names
+  bool _hasActiveRound = false;
+  bool _isCheckingActiveRound = true;
 
   @override
   void initState() {
     super.initState();
     _extractAvailableTees();
+    _checkForActiveRound();
+  }
+
+  Future<void> _checkForActiveRound() async {
+    final hasActive = await _persistenceService.hasActiveRound();
+    if (mounted) {
+      setState(() {
+        _hasActiveRound = hasActive;
+        _isCheckingActiveRound = false;
+      });
+    }
   }
 
   void _extractAvailableTees() {
@@ -133,7 +148,7 @@ class _CourseDetailsSelectionScreenState extends State<CourseDetailsSelectionScr
     }
   }
 
-  void _startRound() {
+  Future<void> _startRound() async {
     if (selectedTeeColor == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -144,9 +159,69 @@ class _CourseDetailsSelectionScreenState extends State<CourseDetailsSelectionScr
       return;
     }
 
+    // Check if there's an active round
+    if (_hasActiveRound) {
+      final shouldContinue = await showDialog<bool>(
+        context: context,
+        builder: (BuildContext context) {
+          return AlertDialog(
+            title: const Text('Active Round Found'),
+            content: const Text(
+              'You have an active round in progress. Do you want to resume it or start a new round?\n\n'
+              'Warning: Starting a new round will discard your current progress.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () async {
+                  // Clear the active round and start new
+                  await _persistenceService.clearRoundState();
+                  Navigator.of(context).pop(true);
+                },
+                style: TextButton.styleFrom(
+                  foregroundColor: Colors.orange,
+                ),
+                child: const Text('Start New Round'),
+              ),
+              ElevatedButton(
+                onPressed: () async {
+                  // Resume the existing round
+                  final savedState = await _persistenceService.loadRoundState();
+                  Navigator.of(context).pop(null);
+                  
+                  if (savedState != null && mounted) {
+                    context.push('/in-round', extra: {
+                      'course': savedState['course'],
+                      'teeColor': savedState['teeColor'],
+                      'isResumingRound': true,
+                    });
+                  }
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF6B8E4E),
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('Resume Round'),
+              ),
+            ],
+          );
+        },
+      );
+
+      // If user cancelled, don't proceed
+      if (shouldContinue == null) return;
+      // If shouldContinue is false, user chose to cancel entirely
+      if (!shouldContinue) return;
+      // If shouldContinue is true, cleared state and will start new round below
+    }
+
     context.push('/in-round', extra: {
       'course': widget.course,
       'teeColor': selectedTeeColor,
+      'isResumingRound': false,
     });
   }
 
@@ -161,98 +236,127 @@ class _CourseDetailsSelectionScreenState extends State<CourseDetailsSelectionScr
         backgroundColor: const Color(0xFF6B8E4E),
         foregroundColor: Colors.white,
       ),
-      body: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.all(20.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Course Header
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE8F1D4),
-                  borderRadius: BorderRadius.circular(12),
-                ),
+      body: _isCheckingActiveRound
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
+              child: Padding(
+                padding: const EdgeInsets.all(20.0),
                 child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      widget.course.courseName,
-                      style: const TextStyle(
-                        fontSize: 28,
+                    // Active Round Warning Banner
+                    if (_hasActiveRound)
+                      Container(
+                        margin: const EdgeInsets.only(bottom: 16),
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.orange[100],
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.orange, width: 2),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.warning, color: Colors.orange[800]),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                'You have an active round in progress',
+                                style: TextStyle(
+                                  color: Colors.orange[900],
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                    // Course Header
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE8F1D4),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Column(
+                        children: [
+                          Text(
+                            widget.course.courseName,
+                            style: const TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF2D3E1F),
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 24),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceAround,
+                            children: [
+                              _buildStatColumn('Holes', totalHoles.toString()),
+                              _buildStatColumn('Par', totalPar.toString()),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 32),
+
+                    // Tee Selection
+                    const Text(
+                      'Select Tee Box',
+                      style: TextStyle(
+                        fontSize: 20,
                         fontWeight: FontWeight.bold,
                         color: Color(0xFF2D3E1F),
                       ),
-                      textAlign: TextAlign.center,
                     ),
-                    const SizedBox(height: 24),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceAround,
-                      children: [
-                        _buildStatColumn('Holes', totalHoles.toString()),
-                        _buildStatColumn('Par', totalPar.toString()),
-                      ],
+                    const SizedBox(height: 16),
+
+                    if (availableTees.isEmpty)
+                      const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(20.0),
+                          child: Text(
+                            'No tee information available',
+                            style: TextStyle(color: Colors.grey),
+                          ),
+                        ),
+                      )
+                    else
+                      ...availableTees.map((tee) => _buildTeeOption(tee)),
+
+                    const SizedBox(height: 32),
+
+                    // Start Round Button
+                    SizedBox(
+                      width: double.infinity,
+                      height: 56,
+                      child: ElevatedButton(
+                        onPressed: selectedTeeColor != null ? _startRound : null,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF6B8E4E),
+                          foregroundColor: Colors.white,
+                          disabledBackgroundColor: Colors.grey[300],
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: Text(
+                          _hasActiveRound ? 'Start New Round' : 'Start Round',
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
                     ),
                   ],
                 ),
               ),
-
-              const SizedBox(height: 32),
-
-              // Tee Selection
-              const Text(
-                'Select Tee Box',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF2D3E1F),
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              if (availableTees.isEmpty)
-                const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(20.0),
-                    child: Text(
-                      'No tee information available',
-                      style: TextStyle(color: Colors.grey),
-                    ),
-                  ),
-                )
-              else
-                ...availableTees.map((tee) => _buildTeeOption(tee)),
-
-              const SizedBox(height: 32),
-
-              // Start Round Button
-              SizedBox(
-                width: double.infinity,
-                height: 56,
-                child: ElevatedButton(
-                  onPressed: selectedTeeColor != null ? _startRound : null,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF6B8E4E),
-                    foregroundColor: Colors.white,
-                    disabledBackgroundColor: Colors.grey[300],
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  child: const Text(
-                    'Start Round',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+            ),
     );
   }
 

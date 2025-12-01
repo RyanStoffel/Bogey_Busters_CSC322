@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:golf_tracker_app/models/course.dart';
 import 'package:golf_tracker_app/services/location_service.dart';
+import 'package:golf_tracker_app/services/friend_service.dart';
 
 enum CourseCardType { courseScoreCard, friendCourseScoreCard, courseCard }
 
@@ -24,6 +25,8 @@ class CourseCard extends StatefulWidget {
   final double? courseLatitude;
   final double? courseLongitude;
   final String? scorecardId;
+  final String? friendId;
+  final String? roundId;
 
   const CourseCard({
     super.key,
@@ -44,6 +47,8 @@ class CourseCard extends StatefulWidget {
     this.courseLatitude,
     this.courseLongitude,
     this.scorecardId,
+    this.friendId,
+    this.roundId,
   });
 
   @override
@@ -52,8 +57,12 @@ class CourseCard extends StatefulWidget {
 
 class _CourseCardState extends State<CourseCard> {
   final LocationService _locationService = LocationService();
-  String? _distanceFromUser;
-  bool _isCalculatingDistance = false;
+  final FriendService _friendService = FriendService();
+  late Future<String?> _distanceFuture;
+  bool _isLiked = false;
+  int _likesCount = 0;
+  int _commentsCount = 0;
+  final TextEditingController _commentController = TextEditingController();
 
   @override
   void initState() {
@@ -61,26 +70,318 @@ class _CourseCardState extends State<CourseCard> {
     if (widget.type == CourseCardType.courseCard &&
         widget.courseLatitude != null &&
         widget.courseLongitude != null) {
-      _calculateDistance();
+      _distanceFuture = _locationService.getDistanceToCourse(
+        widget.courseLatitude!,
+        widget.courseLongitude!,
+      );
+    } else {
+      _distanceFuture = Future.value(null);
+    }
+    if (widget.type == CourseCardType.friendCourseScoreCard &&
+        widget.friendId != null &&
+        widget.roundId != null) {
+      _loadLikesAndComments();
     }
   }
 
-  Future<void> _calculateDistance() async {
-    setState(() {
-      _isCalculatingDistance = true;
-    });
+  @override
+  void dispose() {
+    _commentController.dispose();
+    super.dispose();
+  }
 
-    final distanceInMiles = await _locationService.getDistanceToCourse(
-      widget.courseLatitude!,
-      widget.courseLongitude!,
-    );
+  Future<void> _loadLikesAndComments() async {
+    if (widget.friendId == null || widget.roundId == null) return;
+
+    final isLiked =
+        await _friendService.hasLikedRound(widget.friendId!, widget.roundId!);
+    final likesCount =
+        await _friendService.getRoundLikesCount(widget.friendId!, widget.roundId!);
+    final commentsCount =
+        await _friendService.getRoundCommentsCount(widget.friendId!, widget.roundId!);
 
     if (mounted) {
       setState(() {
-        _distanceFromUser = distanceInMiles;
-        _isCalculatingDistance = false;
+        _isLiked = isLiked;
+        _likesCount = likesCount;
+        _commentsCount = commentsCount;
       });
     }
+  }
+
+  Future<void> _toggleLike() async {
+    if (widget.friendId == null || widget.roundId == null) return;
+
+    try {
+      if (_isLiked) {
+        await _friendService.unlikeRound(widget.friendId!, widget.roundId!);
+        if (mounted) {
+          setState(() {
+            _isLiked = false;
+            _likesCount = _likesCount > 0 ? _likesCount - 1 : 0;
+          });
+        }
+      } else {
+        await _friendService.likeRound(widget.friendId!, widget.roundId!);
+        if (mounted) {
+          setState(() {
+            _isLiked = true;
+            _likesCount = _likesCount + 1;
+          });
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    }
+  }
+
+  void _showComments() {
+    if (widget.friendId == null || widget.roundId == null) return;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _buildCommentsBottomSheet(),
+    );
+  }
+
+  Widget _buildCommentsBottomSheet() {
+    return DraggableScrollableSheet(
+      initialChildSize: 0.6,
+      minChildSize: 0.4,
+      maxChildSize: 0.9,
+      builder: (context, scrollController) {
+        return Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Column(
+            children: [
+              // Handle bar
+              Container(
+                margin: const EdgeInsets.symmetric(vertical: 12),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+
+              // Title
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 20),
+                child: Row(
+                  children: [
+                    Icon(Icons.comment, color: Colors.green),
+                    SizedBox(width: 8),
+                    Text(
+                      'Comments',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF2D3E1F),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 24),
+
+              // Comments list
+              Expanded(
+                child: StreamBuilder<List<Map<String, dynamic>>>(
+                  stream: _friendService.getRoundComments(
+                      widget.friendId!, widget.roundId!),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+
+                    if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                      return Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.comment_outlined,
+                                size: 64, color: Colors.grey[400]),
+                            const SizedBox(height: 16),
+                            Text(
+                              'No comments yet',
+                              style:
+                                  TextStyle(fontSize: 16, color: Colors.grey[600]),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Be the first to comment!',
+                              style:
+                                  TextStyle(fontSize: 14, color: Colors.grey[500]),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+
+                    final comments = snapshot.data!;
+                    return ListView.builder(
+                      controller: scrollController,
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      itemCount: comments.length,
+                      itemBuilder: (context, index) {
+                        final comment = comments[index];
+                        final profilePictureUrl = comment['userProfilePictureUrl'] as String?;
+                        
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 16),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              CircleAvatar(
+                                radius: 18,
+                                backgroundColor: Colors.green,
+                                backgroundImage: profilePictureUrl != null && profilePictureUrl.isNotEmpty
+                                    ? NetworkImage(profilePictureUrl)
+                                    : null,
+                                child: profilePictureUrl == null || profilePictureUrl.isEmpty
+                                    ? Text(
+                                        _getInitials(comment['userName'] ?? 'U'),
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 14,
+                                        ),
+                                      )
+                                    : null,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      comment['userName'] ?? 'Unknown',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      comment['comment'] ?? '',
+                                      style: const TextStyle(fontSize: 14),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+
+              // Comment input
+              Container(
+                padding: EdgeInsets.only(
+                  left: 16,
+                  right: 16,
+                  bottom: MediaQuery.of(context).viewInsets.bottom + 16,
+                  top: 16,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.grey.withOpacity(0.2),
+                      blurRadius: 4,
+                      offset: const Offset(0, -2),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        cursorColor: Colors.green,
+                        controller: _commentController,
+                        decoration: InputDecoration(
+                          hintText: 'Add a comment...',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(24),
+                            borderSide: const BorderSide(color: Colors.green),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(24),
+                            borderSide: const BorderSide(color: Colors.green, width: 2),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(24),
+                            borderSide: BorderSide(color: Colors.green.withOpacity(0.5)),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 8,
+                          ),
+                        ),
+                        maxLines: null,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton(
+                      icon: const Icon(Icons.send),
+                      color: Colors.green,
+                      onPressed: () async {
+                        if (_commentController.text.trim().isEmpty) return;
+
+                        try {
+                          await _friendService.addComment(
+                            widget.friendId!,
+                            widget.roundId!,
+                            _commentController.text,
+                          );
+                          _commentController.clear();
+                          
+                          // Update comment count
+                          final newCount = await _friendService
+                              .getRoundCommentsCount(
+                                  widget.friendId!, widget.roundId!);
+                          if (mounted) {
+                            setState(() {
+                              _commentsCount = newCount;
+                            });
+                          }
+                        } catch (e) {
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Error adding comment: $e')),
+                            );
+                          }
+                        }
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  String _getInitials(String name) {
+    final parts = name.trim().split(' ');
+    if (parts.isEmpty) return '?';
+    if (parts.length == 1) return parts[0][0].toUpperCase();
+    return '${parts[0][0]}${parts[parts.length - 1][0]}'.toUpperCase();
   }
 
   Future<void> _showDeleteConfirmation() async {
@@ -95,7 +396,7 @@ class _CourseCardState extends State<CourseCard> {
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Cancel'),
+              child: const Text(style: TextStyle(color: Colors.black), 'Cancel'),
             ),
             TextButton(
               onPressed: () => Navigator.of(context).pop(true),
@@ -231,34 +532,21 @@ class _CourseCardState extends State<CourseCard> {
   }
 
   Widget _buildDistanceRow() {
-    if (_isCalculatingDistance) {
-      return Row(
-        children: [
-          SizedBox(
-            width: 12,
-            height: 12,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              valueColor: AlwaysStoppedAnimation<Color>(const Color(0xFF6B8E4E)),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Text('Calculating distance...', style: _textStyle(14, FontWeight.w400)),
-        ],
-      );
-    }
-
-    if (_distanceFromUser != null) {
-      return Row(
-        children: [
-          Icon(Icons.location_on, size: 16, color: const Color(0xFF6B8E4E)),
-          const SizedBox(width: 4),
-          Text('$_distanceFromUser miles away', style: _textStyle(14, FontWeight.w400)),
-        ],
-      );
-    }
-
-    return const SizedBox.shrink();
+    return FutureBuilder<String?>(
+      future: _distanceFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.done && snapshot.hasData && snapshot.data != null) {
+          return Row(
+            children: [
+              Icon(Icons.location_on, size: 16, color: const Color(0xFF6B8E4E)),
+              const SizedBox(width: 4),
+              Text('${snapshot.data} miles away', style: _textStyle(14, FontWeight.w400)),
+            ],
+          );
+        }
+        return const SizedBox.shrink();
+      },
+    );
   }
 
   Widget _buildImage() {
@@ -338,14 +626,75 @@ class _CourseCardState extends State<CourseCard> {
                 ),
               ],
             )
-          : Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                _buildScoreItem('Total Score:', widget.totalScore.toString()),
-                _buildScoreItem('Relative to Par:',
-                    '${widget.relativeToPar! >= 0 ? '+' : ''}${widget.relativeToPar}'),
-              ],
-            ),
+          : widget.type == CourseCardType.friendCourseScoreCard
+              ? Column(
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        _buildScoreItem('Total Score:', widget.totalScore.toString()),
+                        _buildScoreItem('Relative to Par:',
+                            '${widget.relativeToPar! >= 0 ? '+' : ''}${widget.relativeToPar}'),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        InkWell(
+                          onTap: _toggleLike,
+                          child: Row(
+                            children: [
+                              Icon(
+                                _isLiked ? Icons.favorite : Icons.favorite_border,
+                                color: _isLiked ? Colors.red : Colors.grey[600],
+                                size: 24,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                '$_likesCount',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  color: Colors.grey[700],
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 24),
+                        InkWell(
+                          onTap: _showComments,
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.comment_outlined,
+                                color: Colors.grey[600],
+                                size: 24,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                '$_commentsCount',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  color: Colors.grey[700],
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                )
+              : Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    _buildScoreItem('Total Score:', widget.totalScore.toString()),
+                    _buildScoreItem('Relative to Par:',
+                        '${widget.relativeToPar! >= 0 ? '+' : ''}${widget.relativeToPar}'),
+                  ],
+                ),
     );
   }
 

@@ -18,6 +18,7 @@ class FriendService {
 
       // Get all users
       final snapshot = await _firestore.collection('users').get();
+      print('Found ${snapshot.docs.length} total users in database');
 
       // Filter locally to exclude current user and match query
       final users = snapshot.docs
@@ -25,11 +26,6 @@ class FriendService {
           .map((doc) {
             try {
               final data = doc.data();
-              // Convert Timestamp to String for createdAt if it exists
-              if (data['createdAt'] is Timestamp) {
-                data['createdAt'] =
-                    (data['createdAt'] as Timestamp).toDate().toIso8601String();
-              }
               return User.fromJson(data);
             } catch (e) {
               print('Error parsing user ${doc.id}: $e');
@@ -41,10 +37,12 @@ class FriendService {
           .where((user) {
             final displayName = user.displayName?.toLowerCase() ?? '';
             final email = user.email.toLowerCase();
-            return displayName.contains(queryLower) || email.contains(queryLower);
+            final matches = displayName.contains(queryLower) || email.contains(queryLower);
+            return matches;
           })
           .toList();
 
+      print('Search for "$query" found ${users.length} matching users');
       return users;
     } catch (e) {
       print('Error searching users: $e');
@@ -166,7 +164,10 @@ class FriendService {
       for (final friendId in friendIds) {
         final friendDoc = await _firestore.collection('users').doc(friendId).get();
         if (friendDoc.exists) {
-          friends.add(User.fromJson(friendDoc.data()!));
+          final data = friendDoc.data()!;
+          // Add the uid from the document ID if not present
+          data['uid'] = friendId;
+          friends.add(User.fromJson(data));
         }
       }
 
@@ -212,36 +213,42 @@ class FriendService {
         print('Found ${roundsSnapshot.docs.length} rounds for $friendName');
 
         for (final roundDoc in roundsSnapshot.docs) {
-          final roundData = roundDoc.data();
+          try {
+            final roundData = roundDoc.data();
 
-          // Skip rounds that don't have score data
-          if (roundData['score'] == null && roundData['totalScore'] == null) {
+            // Skip rounds that don't have score data
+            if (roundData['score'] == null && roundData['totalScore'] == null) {
+              continue;
+            }
+
+            // Map Firebase fields to Round model fields
+            final mappedData = {
+              'roundId': roundDoc.id,
+              'userId': friendId,
+              'courseId': roundData['courseId'] ?? '',
+              'courseName': roundData['courseName'] ?? 'Unknown Course',
+              'date': roundData['timestamp'] != null
+                  ? (roundData['timestamp'] as Timestamp).toDate().toIso8601String()
+                  : DateTime.now().toIso8601String(),
+              'holes': roundData[
+                  'holesData'], // Use holesData array, not holes (which is an int)
+              'totalScore': roundData['score'] ?? roundData['totalScore'],
+              'totalPar': roundData['par'] ?? roundData['totalPar'],
+              'relativeToPar': roundData['relativeToPar'],
+              'teeColor': roundData['teeColor'],
+              'isCompleted': true, // Assume all saved rounds are completed
+            };
+
+            allRounds.add({
+              'round': Round.fromJson(mappedData),
+              'friendName': friendName,
+              'friendId': friendId,
+            });
+          } catch (e) {
+            print('Error parsing round ${roundDoc.id}: $e');
+            // Skip this round and continue with others
             continue;
           }
-
-          // Map Firebase fields to Round model fields
-          final mappedData = {
-            'roundId': roundDoc.id,
-            'userId': friendId,
-            'courseId': roundData['courseId'] ?? '',
-            'courseName': roundData['courseName'] ?? 'Unknown Course',
-            'date': roundData['timestamp'] != null
-                ? (roundData['timestamp'] as Timestamp).toDate().toIso8601String()
-                : DateTime.now().toIso8601String(),
-            'holes': roundData[
-                'holesData'], // Use holesData array, not holes (which is an int)
-            'totalScore': roundData['score'] ?? roundData['totalScore'],
-            'totalPar': roundData['par'] ?? roundData['totalPar'],
-            'relativeToPar': roundData['relativeToPar'],
-            'teeColor': roundData['teeColor'],
-            'isCompleted': true, // Assume all saved rounds are completed
-          };
-
-          allRounds.add({
-            'round': Round.fromJson(mappedData),
-            'friendName': friendName,
-            'friendId': friendId,
-          });
         }
       }
 
@@ -279,10 +286,11 @@ class FriendService {
     });
   }
 
-  // Get count of pending friend requests (excluding accepted notifications)
+  // Get count of all notifications (excluding only accepted friend requests)
   Stream<int> getPendingRequestsCount() {
     return getReceivedFriendRequests().map((requests) {
-      return requests.where((req) => req['type'] != 'accepted').length;
+      // Count all notifications except 'accepted' type
+      return requests.length;
     });
   }
 
@@ -298,6 +306,29 @@ class FriendService {
       // Remove the accepted notification with matching fromUserId
       requests.removeWhere(
           (req) => req['fromUserId'] == fromUserId && req['type'] == 'accepted');
+
+      await _firestore.collection('users').doc(currentUserId).update({
+        'receivedFriendRequests': requests,
+      });
+    } catch (e) {
+      print('Error clearing notification: $e');
+    }
+  }
+
+  // Clear a specific notification by type and timestamp
+  Future<void> clearNotification(String fromUserId, String type, String? timestamp) async {
+    if (currentUserId == null) return;
+
+    try {
+      final userDoc = await _firestore.collection('users').doc(currentUserId).get();
+      final requests = List<Map<String, dynamic>>.from(
+          userDoc.data()?['receivedFriendRequests'] ?? []);
+
+      // Remove the notification with matching criteria
+      requests.removeWhere((req) =>
+          req['fromUserId'] == fromUserId &&
+          req['type'] == type &&
+          (timestamp == null || req['timestamp'] == timestamp));
 
       await _firestore.collection('users').doc(currentUserId).update({
         'receivedFriendRequests': requests,
@@ -333,6 +364,264 @@ class FriendService {
     } catch (e) {
       print('Error checking sent request: $e');
       return false;
+    }
+  }
+
+  // Remove a friend
+  Future<void> removeFriend(String friendId) async {
+    if (currentUserId == null) return;
+
+    try {
+      final batch = _firestore.batch();
+
+      // Remove from both users' friends arrays
+      final currentUserRef = _firestore.collection('users').doc(currentUserId);
+      final friendUserRef = _firestore.collection('users').doc(friendId);
+
+      batch.update(currentUserRef, {
+        'friends': FieldValue.arrayRemove([friendId]),
+      });
+
+      batch.update(friendUserRef, {
+        'friends': FieldValue.arrayRemove([currentUserId]),
+      });
+
+      await batch.commit();
+
+      print('Friend removed successfully');
+    } catch (e) {
+      print('Error removing friend: $e');
+      rethrow;
+    }
+  }
+
+  // Like a friend's round
+  Future<void> likeRound(String friendId, String roundId) async {
+    if (currentUserId == null) return;
+
+    try {
+      final roundRef = _firestore
+          .collection('users')
+          .doc(friendId)
+          .collection('rounds')
+          .doc(roundId);
+
+      // Get the round first to check if likes field exists
+      final roundDoc = await roundRef.get();
+      if (!roundDoc.exists) {
+        throw Exception('Round not found');
+      }
+
+      // Get current user info for notification
+      final currentUserDoc = await _firestore.collection('users').doc(currentUserId).get();
+      final currentUserName = currentUserDoc.data()?['displayName'] ?? 'Someone';
+      final courseName = roundDoc.data()?['courseName'] ?? 'a course';
+
+      final data = roundDoc.data();
+      if (data != null && data['likes'] == null) {
+        // Initialize likes array if it doesn't exist
+        await roundRef.set({
+          'likes': [currentUserId]
+        }, SetOptions(merge: true));
+      } else {
+        // Add to existing likes array
+        await roundRef.update({
+          'likes': FieldValue.arrayUnion([currentUserId])
+        });
+      }
+
+      // Send notification to the round owner
+      await _firestore.collection('users').doc(friendId).update({
+        'receivedFriendRequests': FieldValue.arrayUnion([
+          {
+            'fromUserId': currentUserId,
+            'fromUserName': currentUserName,
+            'type': 'like',
+            'roundId': roundId,
+            'courseName': courseName,
+            'timestamp': DateTime.now().toIso8601String(),
+          }
+        ])
+      });
+
+      print('Round liked');
+    } catch (e) {
+      print('Error liking round: $e');
+      rethrow;
+    }
+  }
+
+  // Unlike a friend's round
+  Future<void> unlikeRound(String friendId, String roundId) async {
+    if (currentUserId == null) return;
+
+    try {
+      final roundRef = _firestore
+          .collection('users')
+          .doc(friendId)
+          .collection('rounds')
+          .doc(roundId);
+
+      await roundRef.update({
+        'likes': FieldValue.arrayRemove([currentUserId])
+      });
+
+      print('Round unliked');
+    } catch (e) {
+      print('Error unliking round: $e');
+      rethrow;
+    }
+  }
+
+  // Check if current user has liked a round
+  Future<bool> hasLikedRound(String friendId, String roundId) async {
+    if (currentUserId == null) return false;
+
+    try {
+      final roundDoc = await _firestore
+          .collection('users')
+          .doc(friendId)
+          .collection('rounds')
+          .doc(roundId)
+          .get();
+
+      if (!roundDoc.exists) return false;
+
+      final likes = List<String>.from(roundDoc.data()?['likes'] ?? []);
+      return likes.contains(currentUserId);
+    } catch (e) {
+      print('Error checking like status: $e');
+      return false;
+    }
+  }
+
+  // Get likes count for a round
+  Future<int> getRoundLikesCount(String friendId, String roundId) async {
+    try {
+      final roundDoc = await _firestore
+          .collection('users')
+          .doc(friendId)
+          .collection('rounds')
+          .doc(roundId)
+          .get();
+
+      if (!roundDoc.exists) return 0;
+
+      final likes = List<String>.from(roundDoc.data()?['likes'] ?? []);
+      return likes.length;
+    } catch (e) {
+      print('Error getting likes count: $e');
+      return 0;
+    }
+  }
+
+  // Add a comment to a friend's round
+  Future<void> addComment(
+      String friendId, String roundId, String comment) async {
+    if (currentUserId == null || comment.trim().isEmpty) return;
+
+    try {
+      final currentUserDoc =
+          await _firestore.collection('users').doc(currentUserId).get();
+      final currentUserData = currentUserDoc.data();
+      final currentUserName = currentUserData?['displayName'] ?? 'Someone';
+      final currentUserProfilePictureUrl = currentUserData?['profilePictureUrl'] as String?;
+
+      final roundRef = _firestore
+          .collection('users')
+          .doc(friendId)
+          .collection('rounds')
+          .doc(roundId);
+
+      // Get the round first to check if comments field exists
+      final roundDoc = await roundRef.get();
+      if (!roundDoc.exists) {
+        throw Exception('Round not found');
+      }
+
+      final courseName = roundDoc.data()?['courseName'] ?? 'a course';
+
+      final newComment = {
+        'userId': currentUserId,
+        'userName': currentUserName,
+        'userProfilePictureUrl': currentUserProfilePictureUrl,
+        'comment': comment.trim(),
+        'timestamp': DateTime.now().toIso8601String(),
+      };
+
+      final data = roundDoc.data();
+      if (data != null && data['comments'] == null) {
+        // Initialize comments array if it doesn't exist
+        await roundRef.set({
+          'comments': [newComment]
+        }, SetOptions(merge: true));
+      } else {
+        // Add to existing comments array
+        await roundRef.update({
+          'comments': FieldValue.arrayUnion([newComment])
+        });
+      }
+
+      // Send notification to the round owner
+      await _firestore.collection('users').doc(friendId).update({
+        'receivedFriendRequests': FieldValue.arrayUnion([
+          {
+            'fromUserId': currentUserId,
+            'fromUserName': currentUserName,
+            'type': 'comment',
+            'roundId': roundId,
+            'courseName': courseName,
+            'comment': comment.trim().length > 50 
+                ? '${comment.trim().substring(0, 50)}...' 
+                : comment.trim(),
+            'timestamp': DateTime.now().toIso8601String(),
+          }
+        ])
+      });
+
+      print('Comment added');
+    } catch (e) {
+      print('Error adding comment: $e');
+      rethrow;
+    }
+  }
+
+  // Get comments for a round
+  Stream<List<Map<String, dynamic>>> getRoundComments(
+      String friendId, String roundId) {
+    return _firestore
+        .collection('users')
+        .doc(friendId)
+        .collection('rounds')
+        .doc(roundId)
+        .snapshots()
+        .map((doc) {
+      if (!doc.exists) return [];
+
+      final comments = doc.data()?['comments'];
+      if (comments == null) return [];
+
+      return List<Map<String, dynamic>>.from(comments);
+    });
+  }
+
+  // Get comments count for a round
+  Future<int> getRoundCommentsCount(String friendId, String roundId) async {
+    try {
+      final roundDoc = await _firestore
+          .collection('users')
+          .doc(friendId)
+          .collection('rounds')
+          .doc(roundId)
+          .get();
+
+      if (!roundDoc.exists) return 0;
+
+      final comments = List<dynamic>.from(roundDoc.data()?['comments'] ?? []);
+      return comments.length;
+    } catch (e) {
+      print('Error getting comments count: $e');
+      return 0;
     }
   }
 }
