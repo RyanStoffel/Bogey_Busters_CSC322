@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io' show Platform;
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -7,15 +6,15 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:golf_tracker_app/models/models.dart';
+import 'package:golf_tracker_app/services/firestore_service.dart';
 import 'package:golf_tracker_app/services/overpass_api_service.dart';
 import 'package:golf_tracker_app/services/round_persistence_service.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:live_activities/live_activities.dart';
 
 class InRoundScreen extends StatefulWidget {
   final Course? course;
   final String? teeColor;
-  final bool isResumingRound; // New parameter to indicate if resuming
+  final bool isResumingRound;
 
   const InRoundScreen({
     super.key,
@@ -28,19 +27,15 @@ class InRoundScreen extends StatefulWidget {
   State<InRoundScreen> createState() => _InRoundScreenState();
 }
 
-class _InRoundScreenState extends State<InRoundScreen>
-    with SingleTickerProviderStateMixin {
+class _InRoundScreenState extends State<InRoundScreen> {
   late GoogleMapController mapController;
+  final FirestoreService _firestoreService = FirestoreService();
   final OverpassApiService _overpassApiService = OverpassApiService();
-  final _liveActivitiesPlugin = LiveActivities();
   final RoundPersistenceService _persistenceService = RoundPersistenceService();
-  String? _activityId;
 
-  // Store course and teeColor when loaded from saved state
   Course? _course;
   String? _teeColor;
 
-  // Store all markers and polygons, but only display current hole
   final Map<int, Set<Marker>> _holeMarkers = {};
   final Map<int, Set<Polygon>> _holePolygons = {};
 
@@ -48,86 +43,31 @@ class _InRoundScreenState extends State<InRoundScreen>
   List<Hole>? _holes;
   int _currentHoleIndex = 0;
 
-  // Score tracking for current hole
   int? _currentScore;
   int? _currentPutts;
-
-  // Track scores for all holes (holeNumber -> score)
   Map<int, int> _holeScores = {};
 
-  // Current location tracking
   Position? _currentPosition;
   StreamSubscription<Position>? _positionStream;
   Set<Polyline> _polylines = {};
   double? _distanceToGreen;
 
-  // Custom marker for user location
+  LatLng? _markerPosition;
+  double? _markerDistanceToGreen;
+  double? _markerDistanceToTee;
+
   BitmapDescriptor? _userLocationIcon;
 
-  // Animation for live indicator
-  late AnimationController _pulseController;
-  late Animation<double> _pulseAnimation;
+  BitmapDescriptor? _teeToMarkerLabelIcon;
+  BitmapDescriptor? _markerToGreenLabelIcon;
+  LatLng? _teeToMarkerMidpoint;
+  LatLng? _markerToGreenMidpoint;
 
-  // Getters that return either widget values or loaded values
+  bool _isHeaderExpanded = false;
+
   Course? get course => widget.course ?? _course;
   String? get teeColor => widget.teeColor ?? _teeColor;
 
-  Future<void> startLiveActivity({
-    required int holeNumber,
-    required int distanceToGreen,
-    required int relativeToPar,
-    required String courseName,
-  }) async {
-    final activityData = {
-      'holeNumber': holeNumber,
-      'distanceToGreen': distanceToGreen,
-      'relativeToPar': relativeToPar,
-      'courseName': courseName,
-    };
-
-    _activityId = await _liveActivitiesPlugin.createActivity(activityData);
-  }
-
-  Future<void> updateLiveActivity({
-    required int holeNumber,
-    required int distanceToGreen,
-    required int relativeToPar,
-    required String courseName,
-  }) async {
-    if (_activityId == null) return;
-
-    final activityData = {
-      'holeNumber': holeNumber,
-      'distanceToGreen': distanceToGreen,
-      'relativeToPar': relativeToPar,
-      'courseName': courseName,
-    };
-
-    await _liveActivitiesPlugin.updateActivity(_activityId!, activityData);
-  }
-
-  void _updateLiveActivity() {
-    if (_activityId != null && currentHole != null && course != null) {
-      updateLiveActivity(
-        holeNumber: currentHole!.holeNumber,
-        distanceToGreen: _distanceToGreen?.round() ?? 0,
-        relativeToPar: _relativeToPar,
-        courseName: course!.courseName,
-      );
-    }
-  }
-
-  Future<void> endLiveActivity() async {
-    if (_activityId == null) return;
-    await _liveActivitiesPlugin.endActivity(_activityId!);
-    _activityId = null;
-  }
-
-  void _endLiveActivity() {
-    endLiveActivity();
-  }
-
-  // NEW: Save round state whenever it changes
   Future<void> _saveRoundState() async {
     if (_holes == null || _holes!.isEmpty || course == null || teeColor == null) return;
 
@@ -140,7 +80,6 @@ class _InRoundScreenState extends State<InRoundScreen>
     );
   }
 
-  // NEW: Try to load saved round state
   Future<bool> _tryLoadSavedRound() async {
     if (!widget.isResumingRound) return false;
 
@@ -153,7 +92,6 @@ class _InRoundScreenState extends State<InRoundScreen>
       _currentHoleIndex = savedState['currentHoleIndex'] as int;
     });
 
-    print('✅ Resumed round at hole ${_currentHoleIndex + 1}');
     return true;
   }
 
@@ -161,95 +99,67 @@ class _InRoundScreenState extends State<InRoundScreen>
   void initState() {
     super.initState();
 
-    // Initialize pulse animation
-    _pulseController = AnimationController(
-      duration: const Duration(milliseconds: 1000),
-      vsync: this,
-    )..repeat(reverse: true);
-
-    _pulseAnimation = Tween<double>(begin: 0.6, end: 1.0).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
-    );
-
     _createCustomMarkers();
     _loadCourseData();
     _startLocationTracking();
-
-    // Start live activity after data is loaded
-    // Wait longer to ensure course data is loaded from saved state
-    Future.delayed(const Duration(milliseconds: 1500), () {
-      if (currentHole != null && course != null) {
-        try {
-          startLiveActivity(
-            holeNumber: currentHole!.holeNumber,
-            distanceToGreen: _distanceToGreen?.round() ?? 0,
-            relativeToPar: _relativeToPar,
-            courseName: course!.courseName,
-          );
-        } catch (e) {
-          print('⚠️ Live Activity error (safe to ignore): $e');
-          // Live Activities might not be initialized - that's okay
-        }
-      }
-    });
   }
 
   @override
   void dispose() {
     _positionStream?.cancel();
-    _pulseController.dispose();
-    endLiveActivity();
     super.dispose();
   }
 
   Future<void> _createCustomMarkers() async {
-    // Create a custom icon for user location programmatically
     final pictureRecorder = ui.PictureRecorder();
     final canvas = Canvas(pictureRecorder);
     final paint = Paint()..isAntiAlias = true;
 
-    const size = 48.0;
+    const size = 56.0;
+    const center = size / 2;
+    const circleRadius = size / 2 - 8;
+    const lineGap = 8.0;
+    const centerDotRadius = 3.0;
 
-    // Draw outer circle (shadow)
-    paint.color = Colors.black.withOpacity(0.3);
-    canvas.drawCircle(
-      const Offset(size / 2, size / 2 + 2),
-      size / 2 - 4,
-      paint,
-    );
-
-    // Draw main circle (yellow/gold)
-    paint.color = Colors.yellow.shade700;
-    canvas.drawCircle(
-      const Offset(size / 2, size / 2),
-      size / 2 - 4,
-      paint,
-    );
-
-    // Draw white inner circle (golf ball look)
     paint.color = Colors.white;
-    canvas.drawCircle(
-      const Offset(size / 2, size / 2),
-      size / 2 - 8,
-      paint,
-    );
-
-    // Draw border
     paint.style = PaintingStyle.stroke;
     paint.strokeWidth = 2;
-    paint.color = Colors.yellow.shade900;
     canvas.drawCircle(
-      const Offset(size / 2, size / 2),
-      size / 2 - 8,
+      const Offset(center, center),
+      circleRadius,
       paint,
     );
 
-    // Draw small dot in center
+    paint.strokeCap = StrokeCap.round;
+
+    canvas.drawLine(
+      const Offset(center, 0),
+      const Offset(center, center - lineGap),
+      paint,
+    );
+
+    canvas.drawLine(
+      const Offset(center, size),
+      const Offset(center, center + lineGap),
+      paint,
+    );
+
+    canvas.drawLine(
+      const Offset(0, center),
+      const Offset(center - lineGap, center),
+      paint,
+    );
+
+    canvas.drawLine(
+      const Offset(size, center),
+      const Offset(center + lineGap, center),
+      paint,
+    );
+
     paint.style = PaintingStyle.fill;
-    paint.color = Colors.yellow.shade700;
     canvas.drawCircle(
-      const Offset(size / 2, size / 2),
-      3,
+      const Offset(center, center),
+      centerDotRadius,
       paint,
     );
 
@@ -265,8 +175,50 @@ class _InRoundScreenState extends State<InRoundScreen>
     }
   }
 
+  Future<BitmapDescriptor> _createDistanceLabel(String distanceText) async {
+    final pictureRecorder = ui.PictureRecorder();
+    final canvas = Canvas(pictureRecorder);
+    final paint = Paint()..isAntiAlias = true;
+
+    const scale = 3.0;
+
+    final textStyle = TextStyle(
+      color: Colors.white,
+      fontSize: 8 * scale,
+      fontWeight: FontWeight.bold,
+    );
+    final textSpan = TextSpan(text: distanceText, style: textStyle);
+    final textPainter = TextPainter(
+      text: textSpan,
+      textDirection: TextDirection.ltr,
+    );
+    textPainter.layout();
+
+    const padding = 3.0 * scale;
+    final boxWidth = textPainter.width + (padding * 2);
+    final boxHeight = textPainter.height + (padding * 2);
+
+    paint.color = Colors.black.withOpacity(0.85);
+    final rect = RRect.fromRectAndRadius(
+      Rect.fromLTWH(0, 0, boxWidth, boxHeight),
+      Radius.circular(6 * scale),
+    );
+    canvas.drawRRect(rect, paint);
+
+    textPainter.paint(
+      canvas,
+      Offset(padding, padding),
+    );
+
+    final picture = pictureRecorder.endRecording();
+    final image = await picture.toImage(boxWidth.toInt(), boxHeight.toInt());
+    final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+    final buffer = byteData!.buffer.asUint8List();
+
+    return BitmapDescriptor.bytes(buffer);
+  }
+
   void _startLocationTracking() async {
-    // Get initial position immediately
     try {
       final initialPosition = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
@@ -279,16 +231,14 @@ class _InRoundScreenState extends State<InRoundScreen>
           _currentPosition = initialPosition;
         });
         _updateDistanceToGreen();
-        _updatePolylineToGreen();
       }
     } catch (e) {
       print('Error getting initial position: $e');
     }
 
-    // Then start listening for updates
     const LocationSettings locationSettings = LocationSettings(
       accuracy: LocationAccuracy.high,
-      distanceFilter: 5, // Update every 5 meters
+      distanceFilter: 5,
     );
 
     _positionStream = Geolocator.getPositionStream(
@@ -299,7 +249,6 @@ class _InRoundScreenState extends State<InRoundScreen>
           _currentPosition = position;
         });
         _updateDistanceToGreen();
-        _updatePolylineToGreen();
       }
     });
   }
@@ -326,62 +275,196 @@ class _InRoundScreenState extends State<InRoundScreen>
       setState(() {
         _distanceToGreen = distanceInMeters * 1.09361;
       });
-
-      _updateLiveActivity();
     }
   }
 
-  void _updatePolylineToGreen() {
-    if (currentHole?.greenLocation == null || _currentPosition == null) {
+
+  void _onMapTapped(LatLng position) {
+    setState(() {
+      _markerPosition = position;
+    });
+    _updateMarkerDistances();
+  }
+
+  void _setMarkerToHoleCenter() {
+    if (currentHole == null) return;
+
+    final teeBox = currentTeeBox;
+    final green = currentHole!.greenLocation;
+
+    if (teeBox?.location?.latitude == null || teeBox?.location?.longitude == null ||
+        green?.latitude == null || green?.longitude == null) {
+      return;
+    }
+
+    final centerLat = (teeBox!.location!.latitude! + green!.latitude!) / 2;
+    final centerLng = (teeBox.location!.longitude! + green.longitude!) / 2;
+
+    setState(() {
+      _markerPosition = LatLng(centerLat, centerLng);
+    });
+
+    _updateMarkerDistances();
+  }
+
+  void _updateMarkerDistances() async {
+    if (_markerPosition == null || currentHole == null) {
       if (mounted) {
         setState(() {
+          _markerDistanceToGreen = null;
+          _markerDistanceToTee = null;
           _polylines.clear();
+          _teeToMarkerLabelIcon = null;
+          _markerToGreenLabelIcon = null;
+          _teeToMarkerMidpoint = null;
+          _markerToGreenMidpoint = null;
         });
       }
       return;
     }
 
-    final green = currentHole!.greenLocation!;
+    final green = currentHole!.greenLocation;
+    final teeBox = currentTeeBox;
+
+    if (green?.latitude != null && green?.longitude != null) {
+      final distanceToGreenInMeters = Geolocator.distanceBetween(
+        _markerPosition!.latitude,
+        _markerPosition!.longitude,
+        green!.latitude!,
+        green.longitude!,
+      );
+      _markerDistanceToGreen = distanceToGreenInMeters * 1.09361;
+    }
+
+    if (teeBox?.location?.latitude != null && teeBox?.location?.longitude != null) {
+      final distanceToTeeInMeters = Geolocator.distanceBetween(
+        _markerPosition!.latitude,
+        _markerPosition!.longitude,
+        teeBox!.location!.latitude!,
+        teeBox.location!.longitude!,
+      );
+      _markerDistanceToTee = distanceToTeeInMeters * 1.09361;
+    }
+
+    final polylines = <Polyline>{};
+    const double circleRadiusMeters = 2.5;
+
+    if (teeBox?.location?.latitude != null && teeBox?.location?.longitude != null && _markerDistanceToTee != null) {
+      final teeLatLng = LatLng(teeBox!.location!.latitude!, teeBox.location!.longitude!);
+
+      final bearing = _calculateBearing(
+        teeLatLng.latitude,
+        teeLatLng.longitude,
+        _markerPosition!.latitude,
+        _markerPosition!.longitude,
+      );
+
+      final circleEdgePoint = _calculatePointAtDistance(
+        _markerPosition!.latitude,
+        _markerPosition!.longitude,
+        bearing,
+        circleRadiusMeters,
+      );
+
+      polylines.add(
+        Polyline(
+          polylineId: const PolylineId('tee_to_marker'),
+          points: [
+            teeLatLng,
+            circleEdgePoint,
+          ],
+          color: Colors.white,
+          width: 3,
+        ),
+      );
+
+      _teeToMarkerMidpoint = LatLng(
+        (teeLatLng.latitude + _markerPosition!.latitude) / 2,
+        (teeLatLng.longitude + _markerPosition!.longitude) / 2,
+      );
+
+      _teeToMarkerLabelIcon = await _createDistanceLabel('${_markerDistanceToTee!.round()} yds');
+    }
+
+    if (green?.latitude != null && green?.longitude != null && _markerDistanceToGreen != null) {
+      final greenLatLng = LatLng(green!.latitude!, green.longitude!);
+
+      final bearing = _calculateBearing(
+        greenLatLng.latitude,
+        greenLatLng.longitude,
+        _markerPosition!.latitude,
+        _markerPosition!.longitude,
+      );
+
+      final circleEdgePoint = _calculatePointAtDistance(
+        _markerPosition!.latitude,
+        _markerPosition!.longitude,
+        bearing,
+        circleRadiusMeters,
+      );
+
+      polylines.add(
+        Polyline(
+          polylineId: const PolylineId('marker_to_green'),
+          points: [
+            circleEdgePoint,
+            greenLatLng,
+          ],
+          color: Colors.white,
+          width: 3,
+        ),
+      );
+
+      _markerToGreenMidpoint = LatLng(
+        (_markerPosition!.latitude + greenLatLng.latitude) / 2,
+        (_markerPosition!.longitude + greenLatLng.longitude) / 2,
+      );
+
+      _markerToGreenLabelIcon = await _createDistanceLabel('${_markerDistanceToGreen!.round()} yds');
+    }
 
     if (mounted) {
       setState(() {
-        _polylines = {
-          Polyline(
-            polylineId: const PolylineId('distance_line'),
-            points: [
-              LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
-              LatLng(green.latitude!, green.longitude!),
-            ],
-            color: Colors.yellow.shade700,
-            width: 4,
-            patterns: [PatternItem.dash(20), PatternItem.gap(10)],
-          ),
-        };
+        _polylines = polylines;
       });
     }
   }
 
-  // Get markers and polygons for current hole only
   Set<Marker> get _currentMarkers {
     final currentHoleNum = currentHole?.holeNumber;
     if (currentHoleNum == null) return {};
 
-    // Add user location marker
     final markers = Set<Marker>.from(_holeMarkers[currentHoleNum] ?? {});
 
-    if (_currentPosition != null && _userLocationIcon != null) {
+    if (_markerPosition != null && _userLocationIcon != null) {
       markers.add(
         Marker(
           markerId: const MarkerId('user_location'),
-          position: LatLng(
-            _currentPosition!.latitude,
-            _currentPosition!.longitude,
-          ),
+          position: _markerPosition!,
           icon: _userLocationIcon!,
-          infoWindow: const InfoWindow(
-            title: 'Your Location',
-          ),
-          anchor: const Offset(0.5, 0.5), // Center the marker
+          anchor: const Offset(0.5, 0.5),
+        ),
+      );
+    }
+
+    if (_teeToMarkerMidpoint != null && _teeToMarkerLabelIcon != null) {
+      markers.add(
+        Marker(
+          markerId: const MarkerId('tee_to_marker_label'),
+          position: _teeToMarkerMidpoint!,
+          icon: _teeToMarkerLabelIcon!,
+          anchor: const Offset(0.5, 0.5),
+        ),
+      );
+    }
+
+    if (_markerToGreenMidpoint != null && _markerToGreenLabelIcon != null) {
+      markers.add(
+        Marker(
+          markerId: const MarkerId('marker_to_green_label'),
+          position: _markerToGreenMidpoint!,
+          icon: _markerToGreenLabelIcon!,
+          anchor: const Offset(0.5, 0.5),
         ),
       );
     }
@@ -403,11 +486,9 @@ class _InRoundScreenState extends State<InRoundScreen>
   TeeBox? get currentTeeBox {
     if (currentHole?.teeBoxes == null || teeColor == null) return null;
 
-    // Try to find exact match first
     var teeBox = currentHole!.teeBoxes!.firstWhere(
       (tee) => tee.tee.toLowerCase() == teeColor!.toLowerCase(),
       orElse: () {
-        // Try to find a shared tee that contains this color
         return currentHole!.teeBoxes!.firstWhere(
           (tee) => tee.tee
               .toLowerCase()
@@ -440,11 +521,9 @@ class _InRoundScreenState extends State<InRoundScreen>
       _isLoadingHoleData = true;
     });
 
-    // NEW: If course is null, we MUST load from saved state
     if (widget.course == null || widget.teeColor == null) {
       final savedState = await _persistenceService.loadRoundState();
       if (savedState == null) {
-        // This shouldn't happen, but handle it gracefully
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('No active round found')),
@@ -453,8 +532,7 @@ class _InRoundScreenState extends State<InRoundScreen>
         }
         return;
       }
-      
-      // Load the course and teeColor from saved state and store in state variables
+
       setState(() {
         _course = savedState['course'] as Course;
         _teeColor = savedState['teeColor'] as String;
@@ -463,50 +541,47 @@ class _InRoundScreenState extends State<InRoundScreen>
         _currentHoleIndex = savedState['currentHoleIndex'] as int;
         _isLoadingHoleData = false;
       });
-      
+
       _updateDistanceToGreen();
-      _updatePolylineToGreen();
+      _setMarkerToHoleCenter();
       _moveCameraToCurrentHole();
-      print('✅ Resumed round from automatic redirect at hole ${_currentHoleIndex + 1}');
       return;
     }
 
-    // NEW: Try to load saved round first (when explicitly resuming)
     final resumedFromSave = await _tryLoadSavedRound();
-    
+
     if (resumedFromSave) {
-      // If we resumed from save, we still need to fetch course details for markers
-      // but we don't need to reset the state
       setState(() {
         _isLoadingHoleData = false;
       });
       _updateDistanceToGreen();
-      _updatePolylineToGreen();
+      _setMarkerToHoleCenter();
       _moveCameraToCurrentHole();
       return;
     }
 
     try {
-      print('Fetching course details for ${course!.courseId}');
-      final courseDetails = await _overpassApiService.fetchCourseDetails(
-        course!.courseId,
-      );
+      Course? courseDetails = await _firestoreService.getCachedCourse(course!.courseId);
+
+      if (courseDetails == null || courseDetails.holes == null || courseDetails.holes!.isEmpty) {
+        courseDetails = await _overpassApiService.fetchCourseDetails(course!.courseId);
+
+        _firestoreService.cacheCourse(courseDetails).catchError((e) {
+          print('Failed to cache course: $e');
+        });
+      }
 
       final holes = courseDetails.holes ?? [];
-      print('Found ${holes.length} holes');
 
       if (holes.isEmpty) {
         throw Exception('No hole data available for this course');
       }
 
-      // Add markers for all holes, organized by hole number
       for (var hole in holes) {
         final holeMarkers = <Marker>{};
         final holePolygons = <Polygon>{};
 
-        // Add tee box markers for selected tee color
         if (hole.teeBoxes != null && hole.teeBoxes!.isNotEmpty) {
-          // Try exact match first, then fuzzy match for shared tees
           final selectedTee = hole.teeBoxes!.firstWhere(
             (tee) => tee.tee.toLowerCase() == teeColor!.toLowerCase(),
             orElse: () {
@@ -530,17 +605,12 @@ class _InRoundScreenState extends State<InRoundScreen>
                   selectedTee.location!.latitude!,
                   selectedTee.location!.longitude!,
                 ),
-                infoWindow: InfoWindow(
-                  title: 'Hole ${hole.holeNumber} Tee',
-                  snippet: '${selectedTee.tee} • Par ${hole.par ?? "?"}',
-                ),
                 icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
               ),
             );
           }
         }
 
-        // Add green marker
         if (hole.greenLocation?.latitude != null &&
             hole.greenLocation?.longitude != null) {
           holeMarkers.add(
@@ -550,18 +620,11 @@ class _InRoundScreenState extends State<InRoundScreen>
                 hole.greenLocation!.latitude!,
                 hole.greenLocation!.longitude!,
               ),
-              infoWindow: InfoWindow(
-                title: 'Hole ${hole.holeNumber} Green',
-                snippet: 'Par ${hole.par ?? "?"}',
-              ),
               icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
             ),
           );
-        } else {
-          print('✗ No green location for hole ${hole.holeNumber}');
         }
 
-        // Draw green polygon
         if (hole.greenCoordinates != null && hole.greenCoordinates!.isNotEmpty) {
           try {
             final validCoords = hole.greenCoordinates!
@@ -581,11 +644,10 @@ class _InRoundScreenState extends State<InRoundScreen>
               );
             }
           } catch (e) {
-            print('✗ Error creating polygon for hole ${hole.holeNumber}: $e');
+            print('Error creating polygon for hole ${hole.holeNumber}: $e');
           }
         }
 
-        // Store markers and polygons for this hole
         _holeMarkers[hole.holeNumber] = holeMarkers;
         _holePolygons[hole.holeNumber] = holePolygons;
       }
@@ -595,30 +657,16 @@ class _InRoundScreenState extends State<InRoundScreen>
         _isLoadingHoleData = false;
       });
 
-      // NEW: Save initial round state
       await _saveRoundState();
 
-      // Update distance and polyline after holes are loaded
       _updateDistanceToGreen();
-      _updatePolylineToGreen();
-      
-      if (Platform.isIOS && currentHole != null) {
-        startLiveActivity(
-          holeNumber: currentHole!.holeNumber,
-          distanceToGreen: _distanceToGreen?.round() ?? 0,
-          relativeToPar: _relativeToPar,
-          courseName: course!.courseName,
-        );
-      }
+      _setMarkerToHoleCenter();
 
-      // Move camera to first hole after a short delay
       if (holes.isNotEmpty) {
         await Future.delayed(const Duration(milliseconds: 800));
-        print('\nMoving camera to first hole...');
         _moveCameraToCurrentHole();
       }
     } catch (e) {
-      print('ERROR loading course data: $e');
       setState(() {
         _isLoadingHoleData = false;
       });
@@ -636,20 +684,12 @@ class _InRoundScreenState extends State<InRoundScreen>
   }
 
   void _moveCameraToCurrentHole() async {
-    if (currentHole == null) {
-      print('No current hole to move to');
-      return;
-    }
-
-    print('Moving camera to hole ${currentHole!.holeNumber}');
+    if (currentHole == null) return;
 
     final teeBox = currentTeeBox;
     final green = currentHole!.greenLocation;
 
-    // Check if we have valid tee location at minimum
     if (teeBox?.location?.latitude == null || teeBox?.location?.longitude == null) {
-      print('Warning: Missing tee location for hole ${currentHole!.holeNumber}');
-      // Try to use green location as fallback
       if (green?.latitude != null && green?.longitude != null) {
         try {
           await mapController.animateCamera(
@@ -666,10 +706,8 @@ class _InRoundScreenState extends State<InRoundScreen>
         }
         return;
       }
-      
-      // Last resort: use course center if available
+
       if (course?.location.latitude != null && course?.location.longitude != null) {
-        print('Using course center as fallback');
         try {
           await mapController.animateCamera(
             CameraUpdate.newCameraPosition(
@@ -693,15 +731,9 @@ class _InRoundScreenState extends State<InRoundScreen>
         teeBox.location!.longitude!,
       );
 
-      print('Tee location: ${teeLatLng.latitude}, ${teeLatLng.longitude}');
-
-      // If we have both tee and green, calculate bearing and show both
       if (green?.latitude != null && green?.longitude != null) {
         final greenLatLng = LatLng(green!.latitude!, green.longitude!);
 
-        print('Green location: ${greenLatLng.latitude}, ${greenLatLng.longitude}');
-
-        // Calculate bearing from tee to green
         final bearing = _calculateBearing(
           teeBox.location!.latitude!,
           teeBox.location!.longitude!,
@@ -709,27 +741,21 @@ class _InRoundScreenState extends State<InRoundScreen>
           green.longitude!,
         );
 
-        print('Bearing to green: $bearing');
-
-        // Calculate center point between tee and green
         final centerLat = (teeLatLng.latitude + greenLatLng.latitude) / 2;
         final centerLng = (teeLatLng.longitude + greenLatLng.longitude) / 2;
         final centerPoint = LatLng(centerLat, centerLng);
 
-        // Animate to center point with bearing towards green
         await mapController.animateCamera(
           CameraUpdate.newCameraPosition(
             CameraPosition(
               target: centerPoint,
-              zoom: 17.8,
+              zoom: 17.4,
               bearing: bearing,
-              tilt: 45,
+              tilt: 0,
             ),
           ),
         );
       } else {
-        // Just show tee box if no green location
-        print('No green location, showing tee box only');
         await mapController.animateCamera(
           CameraUpdate.newCameraPosition(
             CameraPosition(
@@ -762,13 +788,32 @@ class _InRoundScreenState extends State<InRoundScreen>
     return (bearing + 360) % 360;
   }
 
+  LatLng _calculatePointAtDistance(
+      double lat, double lng, double bearing, double distanceMeters) {
+    const double earthRadius = 6378137.0;
+    final double angularDistance = distanceMeters / earthRadius;
+    final double bearingRad = bearing * math.pi / 180;
+    final double latRad = lat * math.pi / 180;
+    final double lngRad = lng * math.pi / 180;
+
+    final double newLatRad = math.asin(
+        math.sin(latRad) * math.cos(angularDistance) +
+        math.cos(latRad) * math.sin(angularDistance) * math.cos(bearingRad));
+
+    final double newLngRad = lngRad +
+        math.atan2(
+            math.sin(bearingRad) * math.sin(angularDistance) * math.cos(latRad),
+            math.cos(angularDistance) - math.sin(latRad) * math.sin(newLatRad));
+
+    return LatLng(newLatRad * 180 / math.pi, newLngRad * 180 / math.pi);
+  }
+
   void _showScoreBottomSheet() {
     if (currentHole == null) return;
 
     final doublePar = (currentHole!.par ?? 4) * 2;
     final bool isHoleCompleted = _holeScores.containsKey(currentHole!.holeNumber);
-    
-    // If editing existing score, load it
+
     if (isHoleCompleted && _currentScore == null) {
       _currentScore = _holeScores[currentHole!.holeNumber];
     }
@@ -800,7 +845,6 @@ class _InRoundScreenState extends State<InRoundScreen>
                   IconButton(
                     icon: const Icon(Icons.close),
                     onPressed: () {
-                      // Reset score if cancelling
                       if (!isHoleCompleted) {
                         _currentScore = null;
                         _currentPutts = null;
@@ -820,7 +864,6 @@ class _InRoundScreenState extends State<InRoundScreen>
               ),
               const SizedBox(height: 24),
 
-              // Score Selection
               const Text(
                 'Score',
                 style: TextStyle(
@@ -852,7 +895,6 @@ class _InRoundScreenState extends State<InRoundScreen>
 
               const SizedBox(height: 24),
 
-              // Putts Selection
               const Text(
                 'Putts',
                 style: TextStyle(
@@ -878,7 +920,7 @@ class _InRoundScreenState extends State<InRoundScreen>
                     );
                   }),
                   _buildScoreChip(
-                    -1, // Special value for 4+
+                    -1,
                     _currentPutts == 4,
                     () {
                       setModalState(() {
@@ -892,7 +934,6 @@ class _InRoundScreenState extends State<InRoundScreen>
 
               const SizedBox(height: 32),
 
-              // Finish Hole Button
               SizedBox(
                 width: double.infinity,
                 height: 56,
@@ -922,8 +963,7 @@ class _InRoundScreenState extends State<InRoundScreen>
                   ),
                 ),
               ),
-              
-              // Finish Round Early button (only show if at least one hole completed)
+
               if (_holeScores.isNotEmpty) ...[
                 const SizedBox(height: 12),
                 SizedBox(
@@ -960,7 +1000,6 @@ class _InRoundScreenState extends State<InRoundScreen>
     );
   }
 
-  // NEW: Show finish round early confirmation
   Future<void> _showFinishRoundEarlyDialog() async {
     final shouldFinish = await showDialog<bool>(
       context: context,
@@ -993,7 +1032,6 @@ class _InRoundScreenState extends State<InRoundScreen>
     );
 
     if (shouldFinish == true) {
-      _endLiveActivity();
       await _persistenceService.clearRoundState();
       _navigateToEndOfRound();
     }
@@ -1028,15 +1066,11 @@ class _InRoundScreenState extends State<InRoundScreen>
     );
   }
 
-  void _finishHole() async { // Made async
-    // Save hole score
+  void _finishHole() async {
     _holeScores[currentHole!.holeNumber] = _currentScore!;
-    print('Hole ${currentHole!.holeNumber}: Score=$_currentScore, Putts=$_currentPutts');
 
-    // NEW: Save round state after finishing a hole
     await _saveRoundState();
 
-    // Move to next hole
     if (_currentHoleIndex < (_holes?.length ?? 0) - 1) {
       setState(() {
         _currentHoleIndex++;
@@ -1044,17 +1078,10 @@ class _InRoundScreenState extends State<InRoundScreen>
         _currentPutts = null;
       });
 
-      // Update distance and polyline for new hole
       _updateDistanceToGreen();
-      _updatePolylineToGreen();
+      _setMarkerToHoleCenter();
       _moveCameraToCurrentHole();
-
-      // Update Live Activity for new hole
-      _updateLiveActivity();
     } else {
-      // Round complete - end Live Activity and navigate to end screen
-      _endLiveActivity();
-      // NEW: Clear saved round state when completing
       await _persistenceService.clearRoundState();
       _navigateToEndOfRound();
     }
@@ -1082,7 +1109,6 @@ class _InRoundScreenState extends State<InRoundScreen>
     );
   }
 
-  // NEW: Show cancel round confirmation
   Future<bool> _showCancelRoundDialog() async {
     final shouldCancel = await showDialog<bool>(
       context: context,
@@ -1095,7 +1121,7 @@ class _InRoundScreenState extends State<InRoundScreen>
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Continue Round'),
+              child: const Text('Continue Round', style: TextStyle(color: Colors.green),),
             ),
             TextButton(
               onPressed: () => Navigator.of(context).pop(true),
@@ -1111,7 +1137,6 @@ class _InRoundScreenState extends State<InRoundScreen>
 
     if (shouldCancel == true) {
       await _persistenceService.clearRoundState();
-      _endLiveActivity();
       return true;
     }
 
@@ -1166,9 +1191,9 @@ class _InRoundScreenState extends State<InRoundScreen>
       child: Scaffold(
         body: Stack(
           children: [
-            // Map
             GoogleMap(
               onMapCreated: _onMapCreated,
+              onTap: _onMapTapped,
               mapType: MapType.satellite,
               initialCameraPosition: CameraPosition(
                 target: course?.location.latitude != null && course?.location.longitude != null
@@ -1181,7 +1206,7 @@ class _InRoundScreenState extends State<InRoundScreen>
                             currentHole!.greenLocation!.latitude!,
                             currentHole!.greenLocation!.longitude!,
                           )
-                        : const LatLng(0, 0), // Fallback to 0,0 if nothing available
+                        : const LatLng(0, 0),
                 zoom: 16.0,
               ),
               markers: _currentMarkers,
@@ -1193,7 +1218,6 @@ class _InRoundScreenState extends State<InRoundScreen>
               mapToolbarEnabled: false,
             ),
 
-            // Hole Info Header with Back Button
             if (currentHole != null)
               Positioned(
                 top: MediaQuery.of(context).padding.top + 16,
@@ -1201,220 +1225,198 @@ class _InRoundScreenState extends State<InRoundScreen>
                 right: 16,
                 child: Row(
                   children: [
-                    // Back Button - now shows cancel dialog
                     Container(
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: const Color(0xFF4C4E52).withOpacity(0.9),
                         shape: BoxShape.circle,
                         boxShadow: [
                           BoxShadow(
                             color: Colors.black.withOpacity(0.2),
-                            blurRadius: 8,
+                            blurRadius: 6,
                             offset: const Offset(0, 2),
                           ),
                         ],
                       ),
                       child: IconButton(
-                        icon: const Icon(Icons.close, size: 20),
+                        icon: const Icon(Icons.close, size: 30, color: Colors.white),
                         onPressed: () async {
                           final shouldCancel = await _showCancelRoundDialog();
                           if (shouldCancel && context.mounted) {
                             context.go('/courses');
                           }
                         },
-                        padding: const EdgeInsets.all(8),
+                        padding: const EdgeInsets.all(6),
                         constraints: const BoxConstraints(),
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    // Hole Info with Navigation
+                    const SizedBox(width: 8),
                     Expanded(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(12),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.2),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF4C4E52),
+                              borderRadius: BorderRadius.circular(10),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.2),
+                                  blurRadius: 6,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            // Previous Hole Button
-                            IconButton(
-                              icon: const Icon(Icons.chevron_left, size: 24),
-                              onPressed: _currentHoleIndex > 0
-                                  ? () {
-                                      setState(() {
-                                        _currentHoleIndex--;
-                                        _currentScore = _holeScores[currentHole!.holeNumber];
-                                        _currentPutts = null; // We don't save putts
-                                      });
-                                      _updateDistanceToGreen();
-                                      _updatePolylineToGreen();
-                                      _moveCameraToCurrentHole();
-                                      _updateLiveActivity();
-                                    }
-                                  : null,
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(),
-                              color: _currentHoleIndex > 0 ? const Color(0xFF6B8E4E) : Colors.grey[300],
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  '${currentHole!.holeNumber}',
+                                  style: const TextStyle(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Text(
+                                      'Mid Green',
+                                      style: TextStyle(
+                                        fontSize: 9,
+                                        color: Colors.white70,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 1),
+                                    Text(
+                                      _distanceToGreen != null
+                                          ? '${_distanceToGreen!.round()} yds'
+                                          : 'Calc...',
+                                      style: const TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(width: 6),
+                                GestureDetector(
+                                  onTap: () {
+                                    setState(() {
+                                      _isHeaderExpanded = !_isHeaderExpanded;
+                                    });
+                                  },
+                                  child: Icon(
+                                    _isHeaderExpanded
+                                        ? Icons.chevron_left
+                                        : Icons.chevron_right,
+                                    color: Colors.white,
+                                    size: 20,
+                                  ),
+                                ),
+                              ],
                             ),
-                            const SizedBox(width: 8),
-                            // Hole Info
+                          ),
+                          if (_isHeaderExpanded)
                             Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.center,
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      CircleAvatar(
-                                        backgroundColor: const Color(0xFF6B8E4E),
-                                        radius: 12,
-                                        child: Text(
-                                          '${currentHole!.holeNumber}',
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 10,
+                              child: Container(
+                                margin: const EdgeInsets.only(left: 6),
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF4C4E52).withOpacity(0.9),
+                                  borderRadius: BorderRadius.circular(10),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.2),
+                                      blurRadius: 6,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                                  children: [
+                                    Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Text(
+                                          'Par',
+                                          style: TextStyle(
+                                            fontSize: 8,
+                                            color: Colors.white70,
+                                            fontWeight: FontWeight.w600,
                                           ),
                                         ),
-                                      ),
-                                      const SizedBox(width: 6),
-                                      Text(
-                                        'Par ${currentHole!.par ?? "?"}',
-                                        style: const TextStyle(
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.bold,
+                                        const SizedBox(height: 1),
+                                        Text(
+                                          '${currentHole!.par ?? "?"}',
+                                          style: const TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.white,
+                                          ),
                                         ),
-                                      ),
-                                    ],
-                                  ),
-                                  Text(
-                                    '${teeColor ?? "?"} ${currentTeeBox?.yards?.toString() ?? "?"} yds • HCP ${currentHole!.handicap?.toString() ?? "?"}',
-                                    style: TextStyle(
-                                      fontSize: 9,
-                                      color: Colors.grey[600],
+                                      ],
                                     ),
-                                  ),
-                                ],
+                                    Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                          teeColor ?? '?',
+                                          style: const TextStyle(
+                                            fontSize: 8,
+                                            color: Colors.white70,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 1),
+                                        Text(
+                                          '${currentTeeBox?.yards ?? "?"} yds',
+                                          style: const TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Text(
+                                          'HCP',
+                                          style: TextStyle(
+                                            fontSize: 8,
+                                            color: Colors.white70,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 1),
+                                        Text(
+                                          '${currentHole!.handicap ?? "?"}',
+                                          style: const TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
-                            const SizedBox(width: 8),
-                            // Next Hole Button
-                            IconButton(
-                              icon: const Icon(Icons.chevron_right, size: 24),
-                              onPressed: _currentHoleIndex < (_holes?.length ?? 0) - 1
-                                  ? () {
-                                      setState(() {
-                                        _currentHoleIndex++;
-                                        _currentScore = _holeScores[currentHole!.holeNumber];
-                                        _currentPutts = null;
-                                      });
-                                      _updateDistanceToGreen();
-                                      _updatePolylineToGreen();
-                                      _moveCameraToCurrentHole();
-                                      _updateLiveActivity();
-                                    }
-                                  : null,
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(),
-                              color: _currentHoleIndex < (_holes?.length ?? 0) - 1
-                                  ? const Color(0xFF6B8E4E)
-                                  : Colors.grey[300],
-                            ),
-                          ],
-                        ),
+                        ],
                       ),
                     ),
                   ],
                 ),
               ),
 
-            // Distance to Green Indicator (below floating button)
-            if (_distanceToGreen != null && currentHole != null)
-              Positioned(
-                bottom: 100, // Position above the floating button
-                left: 0,
-                right: 0,
-                child: Center(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                    decoration: BoxDecoration(
-                      color: Colors.yellow.shade700,
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.2),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // Live indicator (pulsing dot)
-                        AnimatedBuilder(
-                          animation: _pulseAnimation,
-                          builder: (context, child) {
-                            return Container(
-                              width: 8,
-                              height: 8,
-                              decoration: BoxDecoration(
-                                color: Colors.red,
-                                shape: BoxShape.circle,
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.red.withOpacity(_pulseAnimation.value),
-                                    blurRadius: 4 * _pulseAnimation.value,
-                                    spreadRadius: 2 * _pulseAnimation.value,
-                                  ),
-                                ],
-                              ),
-                            );
-                          },
-                        ),
-                        const SizedBox(width: 8),
-                        const Text(
-                          'LIVE',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Container(
-                          width: 1,
-                          height: 20,
-                          color: Colors.white.withOpacity(0.5),
-                        ),
-                        const SizedBox(width: 12),
-                        const SizedBox(width: 6),
-                        Text(
-                          '${_distanceToGreen!.round()} yds',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-
-            // Live Score Indicator (Bottom Right, more compact design)
             if (_holeScores.isNotEmpty)
               Positioned(
                 bottom: 32,
@@ -1469,26 +1471,137 @@ class _InRoundScreenState extends State<InRoundScreen>
                 ),
               ),
 
-            // Floating Hole Button (centered at bottom)
             if (currentHole != null)
               Positioned(
                 bottom: 32,
-                left: 0,
-                right: 0,
+                left: 48,
+                right: 48,
                 child: Center(
-                  child: FloatingActionButton.extended(
-                    onPressed: _showScoreBottomSheet,
-                    backgroundColor: const Color(0xFF6B8E4E),
-                    icon: const Icon(Icons.golf_course, color: Colors.white),
-                    label: Text(
-                      _holeScores.containsKey(currentHole!.holeNumber)
-                          ? 'Edit Hole ${currentHole!.holeNumber}'
-                          : 'Hole ${currentHole!.holeNumber}',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(32),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.2),
+                          blurRadius: 8,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                   child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (_currentHoleIndex > 0)
+                          Container(
+                            width: 64,
+                            height: 64,
+                            decoration: BoxDecoration(
+                              color: const Color(0x4C4E52).withOpacity(0.9),
+                              borderRadius: const BorderRadius.only(
+                                topLeft: Radius.circular(24),
+                                bottomLeft: Radius.circular(24),
+                              ),
+                            ),
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                onTap: () {
+                                  setState(() {
+                                    _currentHoleIndex--;
+                                    _currentScore = _holeScores[currentHole!.holeNumber];
+                                    _currentPutts = null;
+                                  });
+                                  _updateDistanceToGreen();
+                                  _setMarkerToHoleCenter();
+                                  _moveCameraToCurrentHole();
+                                },
+                                child: const Center(
+                                  child: Icon(
+                                    Icons.chevron_left,
+                                    color: Colors.white,
+                                    size: 32,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        Material(
+                          color: const Color(0xFF6B8E4E),
+                          borderRadius: BorderRadius.horizontal(
+                            left: _currentHoleIndex == 0
+                                ? const Radius.circular(12)
+                                : Radius.zero,
+                            right: _currentHoleIndex == (_holes?.length ?? 0) - 1
+                                ? const Radius.circular(12)
+                                : Radius.zero,
+                          ),
+                          child: InkWell(
+                            onTap: _showScoreBottomSheet,
+                            child: Container(
+                              width: 160,
+                              height: 64,
+                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    _holeScores.containsKey(currentHole!.holeNumber)
+                                        ? 'Edit Hole ${currentHole!.holeNumber}'
+                                        : 'Hole ${currentHole!.holeNumber}',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  const Text(
+                                    'Enter Score',
+                                    style: TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        if (_currentHoleIndex < (_holes?.length ?? 0) - 1)
+                          Container(
+                            width: 64,
+                            height: 64,
+                            decoration: BoxDecoration(
+                              color: const Color(0x4C4E52).withOpacity(0.9),
+                              borderRadius: const BorderRadius.only(
+                                topRight: Radius.circular(24),
+                                bottomRight: Radius.circular(24),
+                              ),
+                            ),
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                onTap: () {
+                                  setState(() {
+                                    _currentHoleIndex++;
+                                    _currentScore = _holeScores[currentHole!.holeNumber];
+                                    _currentPutts = null;
+                                  });
+                                  _updateDistanceToGreen();
+                                  _setMarkerToHoleCenter();
+                                  _moveCameraToCurrentHole();
+                                },
+                                child: const Center(
+                                  child: Icon(
+                                    Icons.chevron_right,
+                                    color: Colors.white,
+                                    size: 32,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                   ),
                 ),

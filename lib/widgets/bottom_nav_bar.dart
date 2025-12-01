@@ -102,6 +102,7 @@ class _BottomNavBarState extends State<BottomNavBar> {
       // Navigate to the closest course with full details
       if (context.mounted) {
         context.push('/course-details', extra: closestCourse);
+      
       }
     } catch (e) {
       print('Error finding closest course: $e');

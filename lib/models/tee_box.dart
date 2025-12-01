@@ -20,6 +20,9 @@ class TeeBox {
     return {
       'tee': tee,
       'location': location?.toJson(),
+      'yards': yards,
+      'par': par,
+      'handicap': handicap,
     };
   }
 
@@ -30,6 +33,9 @@ class TeeBox {
       location: json['location'] != null
           ? CoordinatePoint.fromJson(json['location'] as Map<String, dynamic>)
           : null,
+      yards: json['yards'] as int?,
+      par: json['par'] as int?,
+      handicap: json['handicap'] as int?,
     );
   }
 

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:golf_tracker_app/models/models.dart';
 import 'package:http/http.dart' as http;
@@ -11,6 +12,31 @@ class OverpassApiService {
   static const String _baseUrl = 'https://overpass-api.de/api/interpreter';
   static const int _timeoutSeconds = 30;
   static double _milesToMeters(double miles) => miles * 1609.34;
+
+  /// Calculate distance between two coordinate points in yards using Haversine formula
+  static int _calculateDistanceInYards(CoordinatePoint point1, CoordinatePoint point2) {
+    const earthRadiusInMeters = 6371000.0; // Earth's radius in meters
+
+    final lat1 = point1.latitude ?? 0.0;
+    final lon1 = point1.longitude ?? 0.0;
+    final lat2 = point2.latitude ?? 0.0;
+    final lon2 = point2.longitude ?? 0.0;
+
+    final lat1Rad = lat1 * (pi / 180.0);
+    final lat2Rad = lat2 * (pi / 180.0);
+    final deltaLat = (lat2 - lat1) * (pi / 180.0);
+    final deltaLon = (lon2 - lon1) * (pi / 180.0);
+
+    final a = sin(deltaLat / 2) * sin(deltaLat / 2) +
+        cos(lat1Rad) * cos(lat2Rad) *
+        sin(deltaLon / 2) * sin(deltaLon / 2);
+    final c = 2 * asin(sqrt(a));
+
+    final distanceInMeters = earthRadiusInMeters * c;
+    final distanceInYards = (distanceInMeters * 1.09361).round(); // Convert meters to yards
+
+    return distanceInYards;
+  }
 
   ///////////////////////
   /// Utility Methods ///
@@ -219,6 +245,38 @@ class OverpassApiService {
     final tags = courseElement['tags'] as Map<String, dynamic>? ?? {};
     final courseName = tags['name'] as String? ?? 'Unknown Course';
 
+    // Safely parse numeric fields - OSM data can be string or int
+    // Check multiple possible tag names for each field
+    final totalPar = int.tryParse(tags['total_par']?.toString() ?? '') ??
+        int.tryParse(tags['golf:course:par']?.toString() ?? '');
+
+    // For rating, check multiple tags and take first value if it's a range
+    String? ratingStr = tags['rating']?.toString() ?? tags['golf:course:rating']?.toString();
+    double? rating;
+    if (ratingStr != null) {
+      // Take first value if it's a range (e.g., "72.5-75.2" -> "72.5")
+      final firstValue = ratingStr.split(RegExp(r'[-;,]')).first.trim();
+      rating = double.tryParse(firstValue);
+    }
+
+    // For slope, check multiple tags and take first value if it's a range
+    String? slopeStr = tags['slope']?.toString() ?? tags['golf:course:slope']?.toString();
+    int? slope;
+    if (slopeStr != null) {
+      // Take first value if it's a range (e.g., "130-140" -> "130")
+      final firstValue = slopeStr.split(RegExp(r'[-;,]')).first.trim();
+      slope = int.tryParse(firstValue);
+    }
+
+    // For yards/length, check multiple tags and take first value if it's a range
+    String? yardsStr = tags['total_yards']?.toString() ?? tags['golf:course:length']?.toString();
+    int? totalYards;
+    if (yardsStr != null) {
+      // Take first value if it's a range (e.g., "6500-7200" -> "6500")
+      final firstValue = yardsStr.split(RegExp(r'[-;,]')).first.trim();
+      totalYards = int.tryParse(firstValue);
+    }
+
     double lat;
     double lon;
     if (courseElement.containsKey('center')) {
@@ -242,9 +300,9 @@ class OverpassApiService {
 
     final holes = _extractHolesFromWays(elements, nodeCoordinates);
 
-    int? totalPar;
+    int? totalParCalculated;
     if (holes.isNotEmpty) {
-      totalPar = holes.fold<int>(0, (sum, hole) => sum + (hole.par ?? 0));
+      totalParCalculated = holes.fold<int>(0, (sum, hole) => sum + (hole.par ?? 0));
     }
 
     return Course(
@@ -252,7 +310,10 @@ class OverpassApiService {
       courseName: courseName,
       location: CoordinatePoint(latitude: lat, longitude: lon),
       holes: holes.isEmpty ? null : holes,
-      totalPar: totalPar,
+      totalPar: totalPar ?? totalParCalculated,
+      totalYards: totalYards,
+      rating: rating,
+      slope: slope,
       phoneNumber: tags['phone'] as String?,
       website: tags['website'] as String?,
       courseStreetAddress: tags['addr:street'] as String?,
@@ -302,6 +363,7 @@ class OverpassApiService {
         CoordinatePoint? greenLocation;
         List<CoordinatePoint>? greenCoordinates;
 
+        // First pass: collect all tee boxes and find the green location
         for (var element in elements) {
           final tags = element['tags'] as Map<String, dynamic>? ?? {};
           final golfType = tags['golf'] as String?;
@@ -318,12 +380,31 @@ class OverpassApiService {
             final teeColor = tags['tee'] as String? ?? 'unknown';
             final coords = _calculateCenterFromWay(element, nodeCoordinates);
 
-            // Try to get yardage from tags
+            // Try to get yardage from various possible tags
             int? yards;
+
+            // Check for direct yardage tags
             if (tags.containsKey('yards')) {
               yards = int.tryParse(tags['yards']?.toString() ?? '');
             } else if (tags.containsKey('distance')) {
               yards = int.tryParse(tags['distance']?.toString() ?? '');
+            } else if (tags.containsKey('length')) {
+              // Length might be in yards or meters, try to parse
+              final lengthStr = tags['length']?.toString() ?? '';
+              yards = int.tryParse(lengthStr);
+            } else if (tags.containsKey('metres') || tags.containsKey('meters')) {
+              // Convert meters to yards (1 meter = 1.09361 yards)
+              final metersStr = (tags['metres'] ?? tags['meters'])?.toString() ?? '';
+              final meters = int.tryParse(metersStr);
+              if (meters != null) {
+                yards = (meters * 1.09361).round();
+              }
+            }
+
+            // Also check for tee-specific length tag patterns used in OSM
+            // Example: length:blue, length:white, etc.
+            if (yards == null && tags.containsKey('length:$teeColor')) {
+              yards = int.tryParse(tags['length:$teeColor']?.toString() ?? '');
             }
 
             if (coords != null) {
@@ -345,6 +426,27 @@ class OverpassApiService {
             final polyCoords = _getPolygonCoordinates(element, nodeCoordinates);
             if (polyCoords != null && polyCoords.isNotEmpty) {
               greenCoordinates = polyCoords;
+            }
+          }
+        }
+
+        // Second pass: calculate missing yardages using tee-to-green distance
+        if (greenLocation != null) {
+          final green = greenLocation; // Create non-nullable local variable for type promotion
+          for (int i = 0; i < teeBoxes.length; i++) {
+            if (teeBoxes[i].yards == null && teeBoxes[i].location != null) {
+              final calculatedYards = _calculateDistanceInYards(
+                teeBoxes[i].location!,
+                green,
+              );
+              // Create a new TeeBox with the calculated yardage
+              teeBoxes[i] = TeeBox(
+                tee: teeBoxes[i].tee,
+                location: teeBoxes[i].location,
+                yards: calculatedYards,
+                par: teeBoxes[i].par,
+                handicap: teeBoxes[i].handicap,
+              );
             }
           }
         }

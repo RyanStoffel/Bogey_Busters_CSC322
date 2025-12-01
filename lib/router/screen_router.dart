@@ -1,8 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:golf_tracker_app/models/course.dart';
 import 'package:golf_tracker_app/screens/auth_screen.dart';
 import 'package:golf_tracker_app/screens/course_details_selection_screen.dart';
 import 'package:golf_tracker_app/screens/course_preview_screen.dart';
@@ -158,11 +157,29 @@ final GoRouter screenRouter = GoRouter(
     ),
     GoRoute(
       path: '/course-details',
-      builder: (context, state) {
+      pageBuilder: (context, state) {
         final course = state.extra as Course;
-        return CourseDetailsSelectionScreen(course: course);
+
+        return CustomTransitionPage(
+          key: state.pageKey,
+          child: CourseDetailsSelectionScreen(course: course),
+          transitionsBuilder:
+              (context, animation, secondaryAnimation, child) {
+            return SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(0, 1), // from bottom
+                end: Offset.zero,
+              ).animate(CurvedAnimation(
+                parent: animation,
+                curve: Curves.easeOut,
+              )),
+              child: child,
+            );
+          },
+        );
       },
     ),
+
     GoRoute(
       path: '/in-round',
       builder: (context, state) {

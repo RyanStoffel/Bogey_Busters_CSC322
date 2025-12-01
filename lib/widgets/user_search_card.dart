@@ -166,14 +166,7 @@ class _UserSearchCardState extends State<UserSearchCard> {
                   color: Colors.orange[100],
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Text(
-                  'Pending',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.orange,
-                  ),
-                ),
+                child: const Icon(Icons.timer_outlined)
               )
             else
               ElevatedButton(

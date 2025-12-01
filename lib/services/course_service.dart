@@ -10,11 +10,16 @@ class CourseService {
   Future<List<String>> getCourseIds() async {
     try {
       final snapshot = await _firestore.collection('courses').get();
-      return snapshot.docs
+      // Use toSet() to remove duplicates that might exist from caching
+      final courseIds = snapshot.docs
           .map((doc) => doc.data()['courseId'] as String?)
           .where((id) => id != null)
           .cast<String>()
+          .toSet() // Remove duplicates
           .toList();
+
+      print('Found ${courseIds.length} unique course IDs');
+      return courseIds;
     } catch (e) {
       print('Error fetching course IDs from Firebase: $e');
       return [];

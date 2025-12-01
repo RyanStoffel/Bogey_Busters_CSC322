@@ -159,12 +159,98 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       });
 
       if (!mounted) return;
+
+      // Show welcome popup before navigating
+      await _showWelcomePopup();
+
+      if (!mounted) return;
       context.go('/courses');
     } catch (e) {
       _showMessage('Failed to complete onboarding: ${e.toString()}', isError: true);
     } finally {
       setState(() => isLoading = false);
     }
+  }
+
+  Future<void> _showWelcomePopup() async {
+    return showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Row(
+            children: [
+              const Icon(Icons.celebration, color: Colors.green, size: 28),
+              const SizedBox(width: 8),
+              const Text('Welcome to Bogey Busters!'),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Thanks for joining us!',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'Bogey Busters is a free, open-source golf tracking app built by golfers, for golfers.',
+                  style: TextStyle(fontSize: 14),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'We use OpenStreetMap data to bring you detailed course information - completely free!',
+                  style: TextStyle(fontSize: 14),
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.green.withOpacity(0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.info_outline, color: Colors.green.shade700, size: 20),
+                      const SizedBox(width: 8),
+                      const Expanded(
+                        child: Text(
+                          'Tap the info icon anytime to learn more about our mission!',
+                          style: TextStyle(fontSize: 13),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                // TODO: In future, this can open the full About dialog
+                Navigator.of(context).pop();
+              },
+              child: const Text('Learn More', style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(context).pop(),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Got it!'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override

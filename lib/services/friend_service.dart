@@ -268,6 +268,76 @@ class FriendService {
     }
   }
 
+  // Get current user's own rounds
+  Future<List<Map<String, dynamic>>> getCurrentUserRounds() async {
+    if (currentUserId == null) {
+      print('getCurrentUserRounds: No current user');
+      return [];
+    }
+
+    try {
+      final userDoc = await _firestore.collection('users').doc(currentUserId).get();
+      final userName = userDoc.data()?['displayName'] ?? 'You';
+
+      print('Getting rounds for current user: $userName ($currentUserId)');
+
+      final roundsSnapshot = await _firestore
+          .collection('users')
+          .doc(currentUserId)
+          .collection('rounds')
+          .orderBy('timestamp', descending: true)
+          .get();
+
+      print('Found ${roundsSnapshot.docs.length} rounds for current user');
+
+      final allRounds = <Map<String, dynamic>>[];
+
+      for (final roundDoc in roundsSnapshot.docs) {
+        try {
+          final roundData = roundDoc.data();
+
+          // Skip rounds that don't have score data
+          if (roundData['score'] == null && roundData['totalScore'] == null) {
+            continue;
+          }
+
+          // Map Firebase fields to Round model fields
+          final mappedData = {
+            'roundId': roundDoc.id,
+            'userId': currentUserId,
+            'courseId': roundData['courseId'] ?? '',
+            'courseName': roundData['courseName'] ?? 'Unknown Course',
+            'date': roundData['timestamp'] != null
+                ? (roundData['timestamp'] as Timestamp).toDate().toIso8601String()
+                : DateTime.now().toIso8601String(),
+            'holes': roundData['holesData'],
+            'totalScore': roundData['score'] ?? roundData['totalScore'],
+            'totalPar': roundData['par'] ?? roundData['totalPar'],
+            'relativeToPar': roundData['relativeToPar'],
+            'teeColor': roundData['teeColor'],
+            'isCompleted': true,
+          };
+
+          allRounds.add({
+            'round': Round.fromJson(mappedData),
+            'friendName': userName,
+            'friendId': currentUserId,
+            'isCurrentUser': true, // Flag to indicate this is the current user's round
+          });
+        } catch (e) {
+          print('Error parsing round ${roundDoc.id}: $e');
+          continue;
+        }
+      }
+
+      print('Total rounds for current user: ${allRounds.length}');
+      return allRounds;
+    } catch (e) {
+      print('Error getting current user rounds: $e');
+      return [];
+    }
+  }
+
   // Stream of received friend requests
   Stream<List<Map<String, dynamic>>> getReceivedFriendRequests() {
     if (currentUserId == null) {

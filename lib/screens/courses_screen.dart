@@ -1,8 +1,11 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:go_router/go_router.dart';
 import 'package:golf_tracker_app/models/models.dart';
 import 'package:golf_tracker_app/services/course_service.dart';
+import 'package:golf_tracker_app/services/firestore_service.dart';
 import 'package:golf_tracker_app/services/overpass_api_service.dart';
 import 'package:golf_tracker_app/utils/image_helper.dart';
 import 'package:golf_tracker_app/widgets/course_cards.dart';
@@ -17,6 +20,7 @@ class CoursesScreen extends StatefulWidget {
 class _CoursesScreenState extends State<CoursesScreen> {
   final OverpassApiService _overpassApiService = OverpassApiService();
   final CourseService _courseService = CourseService();
+  final FirestoreService _firestoreService = FirestoreService();
   final TextEditingController _searchController = TextEditingController();
   late Future<List<Course>> _courses;
   int _displayCount = 5;
@@ -37,8 +41,8 @@ class _CoursesScreenState extends State<CoursesScreen> {
       // Use cached data
       _courses = Future.value(_cachedCourses);
     } else {
-      // Fetch fresh data
-      _courses = _loadCourses();
+      // Load cached courses only (no API calls unless refresh is pressed)
+      _courses = _loadCourses(fetchFromApi: false);
     }
     _searchController.addListener(_onSearchChanged);
   }
@@ -80,7 +84,7 @@ class _CoursesScreenState extends State<CoursesScreen> {
     }).toList();
   }
 
-  Future<List<Course>> _loadCourses() async {
+  Future<List<Course>> _loadCourses({bool fetchFromApi = false}) async {
     try {
       const double cbuLatitude = 33.929483;
       const double cbuLongitude = -117.286400;
@@ -113,25 +117,57 @@ class _CoursesScreenState extends State<CoursesScreen> {
       print('Found ${courseIds.length} course IDs in Firebase');
 
       print(
-          'Fetching detailed information for ${courseIds.length} courses in parallel...');
+          'Fetching detailed information for ${courseIds.length} courses (checking cache first)...');
 
       final detailFutures = courseIds.map((courseId) async {
         try {
-          print('Loading details for $courseId');
+          print('Starting to process course: $courseId');
+
+          // First, try to get from Firestore cache
+          Course? cachedCourse;
+          try {
+            print('Checking cache for: $courseId');
+            cachedCourse = await _firestoreService.getCachedCourse(courseId);
+            print('Cache check complete for: $courseId');
+
+            if (cachedCourse != null) {
+              print('Using cached data for ${cachedCourse.courseName}');
+              return cachedCourse;
+            } else {
+              print('No cached data found for: $courseId');
+            }
+          } catch (cacheError) {
+            print('Cache retrieval error for $courseId: $cacheError');
+          }
+
+          // Only fetch from API if explicitly requested (via refresh button)
+          if (!fetchFromApi) {
+            print('Skipping API fetch for $courseId (fetchFromApi=false)');
+            return null;
+          }
+
+          // If not cached and API fetch is allowed, fetch from Overpass API
+          print('Loading details from API for $courseId');
           final course = await _overpassApiService.fetchCourseDetails(courseId);
-          print('✓ Successfully loaded ${course.courseName}');
+          print('Successfully loaded ${course.courseName}');
+
+          // Cache the course in Firestore for future use (don't await to avoid blocking)
+          _firestoreService.cacheCourse(course).catchError((e) {
+            print('Failed to cache course ${course.courseName}: $e');
+          });
+
           return course;
         } catch (e) {
-          print('✗ Failed to fetch details for $courseId: $e');
+          print('Failed to fetch details for $courseId: $e');
           // Try to get basic info from the course ID
           try {
             final basicCourse = await _courseService.getCourseBasicInfo(courseId);
             if (basicCourse != null) {
-              print('✓ Loaded basic info for ${basicCourse.courseName}');
+              print(' Loaded basic info for ${basicCourse.courseName}');
               return basicCourse;
             }
           } catch (e2) {
-            print('✗ Failed to get basic info: $e2');
+            print(' Failed to get basic info: $e2');
           }
           return null;
         }
@@ -184,6 +220,133 @@ class _CoursesScreenState extends State<CoursesScreen> {
     return parts.isEmpty ? 'Address not available' : parts.join(', ');
   }
 
+  void _showSuggestCourseDialog() {
+    final courseNameController = TextEditingController();
+    final courseIdController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: const Text('Suggest a Golf Course'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Help us expand our course library! Provide either a course name or OpenStreetMap ID.',
+                  style: TextStyle(fontSize: 14, color: Colors.grey),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: courseNameController,
+                  cursorColor: Colors.green,
+                  decoration: InputDecoration(
+                    labelText: 'Course Name (Optional)',
+                    floatingLabelStyle: TextStyle(color: Colors.green),
+                    hintText: 'e.g., Pebble Beach Golf Links',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: Colors.green, width: 2),
+                    ),
+                    prefixIcon: const Icon(Icons.golf_course),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: courseIdController,
+                  cursorColor: Colors.green,
+                  decoration: InputDecoration(
+                    labelText: 'OpenStreetMap ID (Optional)',
+                    floatingLabelStyle: TextStyle(color: Colors.green),
+                    hintText: 'e.g., relation/12345',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: Colors.green, width: 2),
+                    ),
+                    prefixIcon: const Icon(Icons.map),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                final courseName = courseNameController.text.trim();
+                final courseId = courseIdController.text.trim();
+
+                if (courseName.isEmpty && courseId.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Please enter either a course name or OpenStreetMap ID'),
+                    ),
+                  );
+                  return;
+                }
+
+                // Validate course ID format if provided
+                if (courseId.isNotEmpty && !RegExp(r'^(relation|way|node)/\d+$').hasMatch(courseId)) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Invalid format. Use: relation/12345 or way/67890'),
+                    ),
+                  );
+                  return;
+                }
+
+                try {
+                  // Submit to courses_under_review collection
+                  await FirebaseFirestore.instance.collection('courses_under_review').add({
+                    'courseName': courseName.isNotEmpty ? courseName : null,
+                    'courseId': courseId.isNotEmpty ? courseId : null,
+                    'suggestedBy': FirebaseAuth.instance.currentUser?.uid,
+                    'suggestedByEmail': FirebaseAuth.instance.currentUser?.email,
+                    'timestamp': FieldValue.serverTimestamp(),
+                    'status': 'pending',
+                  });
+
+                  Navigator.of(dialogContext).pop();
+
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Course suggestion submitted! We\'ll review it soon.'),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  }
+                } catch (e) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Error submitting suggestion: $e')),
+                    );
+                  }
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Submit'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -191,14 +354,30 @@ class _CoursesScreenState extends State<CoursesScreen> {
         title: const Text('Nearby Courses'),
         actions: [
           IconButton(
+            icon: const Icon(Icons.add_location_alt),
+            tooltip: 'Suggest Course',
+            onPressed: _showSuggestCourseDialog,
+          ),
+          IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: () {
+            onPressed: () async {
+              // Show loading indicator
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Clearing cache and refreshing courses...'),
+                  duration: Duration(seconds: 2),
+                ),
+              );
+
+              // Clear Firestore cache
+              await _firestoreService.clearAllCourseCache();
+
               setState(() {
                 _displayCount = 15;
-                // Clear cache and force refresh
+                // Clear in-memory cache and force refresh with API calls
                 _cachedCourses = null;
                 _lastFetchTime = null;
-                _courses = _loadCourses();
+                _courses = _loadCourses(fetchFromApi: true);
                 _searchController.clear();
               });
             },
@@ -369,7 +548,7 @@ class _CoursesScreenState extends State<CoursesScreen> {
                       onPlay: () {
                         if (!context.mounted) return;
                         context.push('/course-details',
-                            extra: course); // CHANGE THIS LINE
+                            extra: course);
                       },
                     );
                   },

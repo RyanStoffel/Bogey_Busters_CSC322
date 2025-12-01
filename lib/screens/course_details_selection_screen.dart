@@ -235,6 +235,10 @@ class _CourseDetailsSelectionScreenState extends State<CourseDetailsSelectionScr
         title: Text(widget.course.courseName),
         backgroundColor: const Color(0xFF6B8E4E),
         foregroundColor: Colors.white,
+        leading: IconButton(
+          icon: const Icon(Icons.close),
+          onPressed: () => context.pop(),
+        ),
       ),
       body: _isCheckingActiveRound
           ? const Center(child: CircularProgressIndicator())

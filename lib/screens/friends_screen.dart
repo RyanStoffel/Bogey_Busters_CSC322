@@ -43,11 +43,23 @@ class _FriendsScreenState extends State<FriendsScreen> {
       _isLoadingRounds = true;
     });
 
-    final rounds = await _friendService.getFriendsRounds();
+    // Get both friends' rounds and current user's rounds
+    final friendsRounds = await _friendService.getFriendsRounds();
+    final userRounds = await _friendService.getCurrentUserRounds();
+
+    // Combine the rounds
+    final allRounds = [...friendsRounds, ...userRounds];
+
+    // Sort by date (most recent first)
+    allRounds.sort((a, b) {
+      final dateA = (a['round'] as dynamic).date;
+      final dateB = (b['round'] as dynamic).date;
+      return (dateB as DateTime).compareTo(dateA as DateTime);
+    });
 
     if (mounted) {
       setState(() {
-        _friendsRounds = rounds;
+        _friendsRounds = allRounds;
         _isLoadingRounds = false;
       });
     }
@@ -312,83 +324,109 @@ class _FriendsScreenState extends State<FriendsScreen> {
   }
 
   Widget _buildLikeNotification(Map<String, dynamic> request) {
-    return Row(
-      children: [
-        CircleAvatar(
-          radius: 20,
-          backgroundColor: Colors.red,
-          child: const Icon(Icons.favorite, color: Colors.white, size: 20),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Text(
-            '${request['fromUserName']} liked your round at ${request['courseName']}',
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF2D3E1F),
+    return InkWell(
+      onTap: () {
+        // Close the notification modal
+        Navigator.of(context).pop();
+        // The round should be visible in the feed below
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Check the feed for your round at ${request['courseName']}'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      },
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 20,
+            backgroundColor: Colors.red,
+            child: const Icon(Icons.favorite, color: Colors.white, size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              '${request['fromUserName']} liked your round at ${request['courseName']}',
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF2D3E1F),
+              ),
             ),
           ),
-        ),
-        IconButton(
-          icon: const Icon(Icons.close, size: 20),
-          onPressed: () async {
-            await _friendService.clearNotification(request['fromUserId'], request['type'], request['timestamp']);
-          },
-        ),
-      ],
+          IconButton(
+            icon: const Icon(Icons.close, size: 20),
+            onPressed: () async {
+              await _friendService.clearNotification(request['fromUserId'], request['type'], request['timestamp']);
+            },
+          ),
+        ],
+      ),
     );
   }
 
   Widget _buildCommentNotification(Map<String, dynamic> request) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            CircleAvatar(
-              radius: 20,
-              backgroundColor: Colors.blue,
-              child: const Icon(Icons.comment, color: Colors.white, size: 20),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
+    return InkWell(
+      onTap: () {
+        // Close the notification modal
+        Navigator.of(context).pop();
+        // The round should be visible in the feed below
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Check the feed for your round at ${request['courseName']}'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 20,
+                backgroundColor: Colors.blue,
+                child: const Icon(Icons.comment, color: Colors.white, size: 20),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  '${request['fromUserName']} commented on your round at ${request['courseName']}',
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF2D3E1F),
+                  ),
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.close, size: 20),
+                onPressed: () async {
+                  await _friendService.clearNotification(request['fromUserId'], request['type'], request['timestamp']);
+                },
+              ),
+            ],
+          ),
+          if (request['comment'] != null) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.grey[100],
+                borderRadius: BorderRadius.circular(8),
+              ),
               child: Text(
-                '${request['fromUserName']} commented on your round at ${request['courseName']}',
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF2D3E1F),
+                '"${request['comment']}"',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontStyle: FontStyle.italic,
+                  color: Colors.grey[700],
                 ),
               ),
             ),
-            IconButton(
-              icon: const Icon(Icons.close, size: 20),
-              onPressed: () async {
-                await _friendService.clearNotification(request['fromUserId'], request['type'], request['timestamp']);
-              },
-            ),
           ],
-        ),
-        if (request['comment'] != null) ...[
-          const SizedBox(height: 8),
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: Colors.grey[100],
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Text(
-              '"${request['comment']}"',
-              style: TextStyle(
-                fontSize: 13,
-                fontStyle: FontStyle.italic,
-                color: Colors.grey[700],
-              ),
-            ),
-          ),
         ],
-      ],
+      ),
     );
   }
 
@@ -532,16 +570,16 @@ class _FriendsScreenState extends State<FriendsScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.people_outline, size: 64, color: Colors.grey[400]),
+            Icon(Icons.golf_course, size: 64, color: Colors.grey[400]),
             const SizedBox(height: 16),
             Text(
-              'No friends rounds yet',
+              'No rounds yet',
               style: TextStyle(
                   fontSize: 18, fontWeight: FontWeight.w600, color: Colors.grey[600]),
             ),
             const SizedBox(height: 8),
             Text(
-              'Add friends to see their rounds!',
+              'Play a round or add friends to see rounds here!',
               style: TextStyle(fontSize: 14, color: Colors.grey[500]),
             ),
           ],

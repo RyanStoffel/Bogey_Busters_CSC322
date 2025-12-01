@@ -22,6 +22,10 @@ class _CoursePreviewScreenState extends State<CoursePreviewScreen> {
         title: Text(course.courseName),
         backgroundColor: const Color(0xFF6B8E4E),
         foregroundColor: Colors.white,
+        leading: IconButton(
+          icon: const Icon(Icons.close),
+          onPressed: () => context.pop(),
+        ),
       ),
       body: SingleChildScrollView(
         child: Column(
@@ -70,7 +74,7 @@ class _CoursePreviewScreenState extends State<CoursePreviewScreen> {
                       ),
                       _buildStatColumn(
                         'Yards',
-                        _calculateTotalYards(course).toString(),
+                        course.totalYards.toString(),
                       ),
                     ],
                   ),
@@ -318,36 +322,6 @@ class _CoursePreviewScreenState extends State<CoursePreviewScreen> {
     }
 
     return parts.join(', ');
-  }
-
-  int _calculateTotalYards(Course course) {
-    if (course.holes == null || course.holes!.isEmpty) {
-      return 0;
-    }
-
-    int totalYards = 0;
-
-    for (var hole in course.holes!) {
-      if (hole.teeBoxes != null && hole.teeBoxes!.isNotEmpty) {
-        // Try exact match first, then fuzzy match for shared tees
-        final whiteTee = hole.teeBoxes!.firstWhere(
-          (tee) => tee.tee.toLowerCase() == 'white',
-          orElse: () {
-            return hole.teeBoxes!.firstWhere(
-              (tee) =>
-                  tee.tee.toLowerCase().split(';').map((c) => c.trim()).contains('white'),
-              orElse: () => hole.teeBoxes!.first,
-            );
-          },
-        );
-
-        if (whiteTee.yards != null) {
-          totalYards += whiteTee.yards!;
-        }
-      }
-    }
-
-    return totalYards;
   }
 
   Widget _buildStatColumn(String label, String value) {
