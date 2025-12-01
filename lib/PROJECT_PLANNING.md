@@ -47,18 +47,15 @@
   - [x] Environment variables (flutter_dotenv)
   - [x] Image picker (image_picker)
   - [x] SVG support (flutter_svg)
-  - [ ] Google Maps (google_maps_flutter) - Not yet added
-  - [ ] Geolocator - Not yet added
-  - [ ] Hive - Not yet added
-  - [ ] HTTP - Not yet added
-  - [ ] Provider/Riverpod - Not yet added
+  - [x] Google Maps (google_maps_flutter)
+  - [x] Geolocator 
+  - [x] HTTP - Not yet added
 - [x] Configure Firebase project (iOS & Android)
 - [x] Set up Firebase Authentication
 - [x] Set up Firestore database structure
-- [ ] Configure Google Maps API keys (iOS & Android)
-- [ ] Set up location permissions (iOS Info.plist & Android Manifest)
+- [x] Configure Google Maps API keys (iOS & Android)
+- [x] Set up location permissions (iOS Info.plist & Android Manifest)
 - [x] Create app theme and color scheme (Green theme with Material 3)
-- [ ] Set up state management (Provider/Riverpod)
 
 ## PHASE 2: DATA MODELS
 
@@ -85,15 +82,13 @@
   - [x] Onboarding completion tracking
   - [x] Account linking (Google account)
   - [x] Account deletion
-- [ ] Create GolfAPIService for fetching course data
-- [ ] Create LocationService for GPS tracking
-- [ ] Create DatabaseService for local storage (hive)
+- [x] Create GolfAPIService for fetching course data
+- [x] Create LocationService for GPS tracking
 - [x] Create FirestoreService for cloud data sync
   - [x] User profile operations (CRUD)
   - [x] Round operations (save, get, update, delete, stream)
   - [x] Statistics operations (save, get, stream)
   - [x] Favorite courses operations (save, get, remove)
-- [ ] Create DistanceCalculationService for yardage calculations
 - [ ] Create StatisticsService for calculating golf stats
 - [x] Create services.dart barrel file for exports
 
@@ -142,21 +137,15 @@
   - [x] Age input with validation
   - [x] Form validation
   - [x] Save to Firestore
-- [ ] Add recent rounds section to Home Screen
-- [ ] Design Settings Screen UI in Figma
-- [ ] Build Settings Screen layout
 - [x] Add account settings section
 - [ ] Add app preferences (units, notifications)
 - [ ] Add delete account option
 - [x] Design Profile Screen UI in Figma
 - [x] Build Profile Screen with user info
-- [ ] Add past rounds list view
+- [x] Add past rounds list view
 - [ ] Add statistics overview cards
 - [x] Add profile picture upload (in Onboarding Screen)
 - [x] Add edit profile functionality
-- [ ] Design Community Screen UI in Figma
-- [ ] Build Community Screen (placeholder for now)
-- [ ] Plan community features (leaderboards, friends, etc.)
 
 ## PHASE 6: COURSES SCREEN
 
@@ -168,48 +157,43 @@
   - [x] Course image display
   - [x] Course name, par, holes, distance
   - [x] Preview and Play buttons
-- [ ] Build Courses Screen with search bar
-- [ ] Implement course search by name
-- [ ] Implement course search by location
+- [x] Build Courses Screen with search bar
+- [x] Implement course search by name
 - [x] Add course list view with distance from user (currently placeholder distance)
 - [ ] Add course favorites functionality
 - [x] Create Course Detail view
 - [x] Display course info (holes, par, rating, slope)
-- [ ] Show course location on map
+- [x] Show course location on map
 
 ## PHASE 7: PLAY SCREEN & COURSE SELECTION
 
-- [ ] Design Play Screen UI in Figma
-- [ ] Build Play Screen layout
-- [ ] Implement "Find Nearest Course" functionality using GPS
-- [ ] Display nearest course card with details
-- [ ] Add "Search Different Course" button
-- [ ] Add "Start Round" button
-- [ ] Implement course switching functionality
-- [ ] Add loading states while fetching course data from API
+- [x] Design Play Screen UI in Figma
+- [x] Build Play Screen layout
+- [x] Implement "Find Nearest Course" functionality using GPS
+- [x] Display nearest course card with details
+- [x] Add "Start Round" button
+- [x] Add loading states while fetching course data from API
 
 ## PHASE 8: ROUND DETAILS SCREEN
 
-- [ ] Design Round Details Screen UI in Figma
-- [ ] Build Round Details Screen
-- [ ] Display course name and date
-- [ ] Add tee selection (Blue, White, Red, Gold)
+- [x] Design Round Details Screen UI in Figma
+- [x] Build Round Details Screen
+- [x] Display course name and date
+- [x] Add tee selection (Blue, White, Red, Gold)
 - [ ] Add playing partners input (optional)
-- [ ] Add weather conditions input (optional)
-- [ ] Add "Start Round" confirmation button
-- [ ] Create new round in database when started
+- [x] Add "Start Round" confirmation button
+- [x] Create new round in database when started
 
 ## PHASE 9: HOLE SCREEN (CORE FEATURE)
 
-- [ ] Design Hole Screen UI in Figma
-- [ ] Build Hole Screen layout with map integration
-- [ ] Integrate Google Maps with course overlay
-- [ ] Display tee boxes on map from API coordinates
-- [ ] Display green on map from API coordinates
-- [ ] Display hazards/bunkers on map from API coordinates
-- [ ] Implement real-time GPS tracking
-- [ ] Display current position on map with blue dot
-- [ ] Show distance to green dynamically
+- [x] Design Hole Screen UI in Figma
+- [x] Build Hole Screen layout with map integration
+- [x] Integrate Google Maps with course overlay
+- [x] Display tee boxes on map from API coordinates
+- [x] Display green on map from API coordinates
+- [x] Implement real-time GPS tracking
+- [x] Display current position on map with blue dot
+- [x] Show distance to green dynamically
 - [ ] Build club selector horizontal scroll view
 - [ ] Add all club types to selector (Driver, Woods, Irons, Wedges, Putter)
 - [ ] Implement club selection highlighting

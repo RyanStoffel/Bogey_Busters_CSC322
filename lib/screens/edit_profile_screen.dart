@@ -4,8 +4,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:image_cropper/image_cropper.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:golf_tracker_app/services/services.dart';
 import 'dart:typed_data';
+import 'dart:io';
 
 class EditProfileScreen extends StatefulWidget {
   const EditProfileScreen({super.key});
@@ -104,10 +107,46 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       );
 
       if (image != null) {
-        final bytes = await image.readAsBytes();
-        setState(() {
-          _newImageBytes = bytes;
-        });
+        // Crop the image
+        final CroppedFile? croppedFile = await ImageCropper().cropImage(
+          sourcePath: image.path,
+          aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1),
+          uiSettings: [
+            AndroidUiSettings(
+              toolbarTitle: 'Crop Profile Picture',
+              toolbarColor: Colors.green,
+              toolbarWidgetColor: Colors.white,
+              initAspectRatio: CropAspectRatioPreset.square,
+              lockAspectRatio: true,
+              aspectRatioPresets: [
+                CropAspectRatioPreset.square,
+              ],
+            ),
+            IOSUiSettings(
+              title: 'Crop Profile Picture',
+              aspectRatioLockEnabled: true,
+              resetAspectRatioEnabled: false,
+              aspectRatioPresets: [
+                CropAspectRatioPreset.square,
+              ],
+            ),
+            WebUiSettings(
+              context: context,
+              presentStyle: WebPresentStyle.dialog,
+              size: const CropperSize(
+                width: 520,
+                height: 520,
+              ),
+            ),
+          ],
+        );
+
+        if (croppedFile != null) {
+          final bytes = await File(croppedFile.path).readAsBytes();
+          setState(() {
+            _newImageBytes = bytes;
+          });
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -116,6 +155,133 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         );
       }
     }
+  }
+
+  Future<void> cropCurrentImage() async {
+    if (_profileImageUrl == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No profile picture to crop')),
+        );
+      }
+      return;
+    }
+
+    try {
+      // Download the current profile image to a temporary file
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+
+      final ref = FirebaseStorage.instance
+          .ref()
+          .child('profile_pictures/${user.uid}.jpg');
+      
+      // Get the image data
+      final imageData = await ref.getData();
+      if (imageData == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Could not load profile picture')),
+          );
+        }
+        return;
+      }
+
+      // Create a temporary file
+      final tempDir = await getTemporaryDirectory();
+      final tempFile = File('${tempDir.path}/temp_profile_${user.uid}.jpg');
+      await tempFile.writeAsBytes(imageData);
+
+      // Crop the image
+      final CroppedFile? croppedFile = await ImageCropper().cropImage(
+        sourcePath: tempFile.path,
+        aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1),
+        uiSettings: [
+          AndroidUiSettings(
+            toolbarTitle: 'Crop Profile Picture',
+            toolbarColor: Colors.green,
+            toolbarWidgetColor: Colors.white,
+            initAspectRatio: CropAspectRatioPreset.square,
+            lockAspectRatio: true,
+            aspectRatioPresets: [
+              CropAspectRatioPreset.square,
+            ],
+          ),
+          IOSUiSettings(
+            title: 'Crop Profile Picture',
+            aspectRatioLockEnabled: true,
+            resetAspectRatioEnabled: false,
+            aspectRatioPresets: [
+              CropAspectRatioPreset.square,
+            ],
+          ),
+          WebUiSettings(
+            context: context,
+            presentStyle: WebPresentStyle.dialog,
+            size: const CropperSize(
+              width: 520,
+              height: 520,
+            ),
+          ),
+        ],
+      );
+
+      // Clean up temp file
+      if (await tempFile.exists()) {
+        await tempFile.delete();
+      }
+
+      if (croppedFile != null) {
+        final bytes = await File(croppedFile.path).readAsBytes();
+        setState(() {
+          _newImageBytes = bytes;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error cropping image: $e')),
+        );
+      }
+    }
+  }
+
+  void showImageOptions() {
+    showModalBottomSheet(
+      context: context,
+      builder: (BuildContext context) {
+        return SafeArea(
+          child: Wrap(
+            children: [
+              if (_profileImageUrl != null)
+                ListTile(
+                  leading: const Icon(Icons.crop, color: Colors.green),
+                  title: const Text('Crop Current Picture'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    cropCurrentImage();
+                  },
+                ),
+              ListTile(
+                leading: const Icon(Icons.photo_library, color: Colors.green),
+                title: const Text('Choose New Picture'),
+                onTap: () {
+                  Navigator.pop(context);
+                  pickImage();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.cancel, color: Colors.grey),
+                title: const Text('Cancel'),
+                onTap: () {
+                  Navigator.pop(context);
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   Future<void> saveProfile() async {
@@ -197,25 +363,28 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                         Center(
                           child: Stack(
                             children: [
-                              CircleAvatar(
-                                radius: 60,
-                                backgroundColor: Colors.grey[300],
-                                backgroundImage: _newImageBytes != null
-                                    ? MemoryImage(_newImageBytes!)
-                                    : (_profileImageUrl != null
-                                        ? NetworkImage(_profileImageUrl!)
-                                        : null) as ImageProvider?,
-                                child: (_newImageBytes == null &&
-                                        _profileImageUrl == null)
-                                    ? const Icon(Icons.person,
-                                        size: 60, color: Colors.white)
-                                    : null,
+                              GestureDetector(
+                                onTap: showImageOptions,
+                                child: CircleAvatar(
+                                  radius: 60,
+                                  backgroundColor: Colors.grey[300],
+                                  backgroundImage: _newImageBytes != null
+                                      ? MemoryImage(_newImageBytes!)
+                                      : (_profileImageUrl != null
+                                          ? NetworkImage(_profileImageUrl!)
+                                          : null) as ImageProvider?,
+                                  child: (_newImageBytes == null &&
+                                          _profileImageUrl == null)
+                                      ? const Icon(Icons.person,
+                                          size: 60, color: Colors.white)
+                                      : null,
+                                ),
                               ),
                               Positioned(
                                 bottom: 0,
                                 right: 0,
                                 child: GestureDetector(
-                                  onTap: pickImage,
+                                  onTap: showImageOptions,
                                   child: Container(
                                     padding: const EdgeInsets.all(8),
                                     decoration: BoxDecoration(

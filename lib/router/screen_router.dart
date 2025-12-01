@@ -9,6 +9,7 @@ import 'package:golf_tracker_app/screens/course_preview_screen.dart';
 import 'package:golf_tracker_app/screens/courses_screen.dart';
 import 'package:golf_tracker_app/screens/edit_profile_screen.dart';
 import 'package:golf_tracker_app/screens/friends_screen.dart';
+import 'package:golf_tracker_app/screens/friends_management_screen.dart';
 import 'package:golf_tracker_app/screens/onboarding_screen.dart';
 import 'package:golf_tracker_app/screens/profile_screen.dart';
 import 'package:golf_tracker_app/screens/shell_screen.dart';
@@ -238,6 +239,14 @@ final GoRouter screenRouter = GoRouter(
           pageBuilder: (context, state) => NoTransitionPage(
             child: const FriendsScreen(),
           ),
+          routes: [
+            GoRoute(
+              path: 'manage',
+              pageBuilder: (context, state) => NoTransitionPage(
+                child: const FriendsManagementScreen(),
+              ),
+            ),
+          ],
         ),
         GoRoute(
           path: '/courses',

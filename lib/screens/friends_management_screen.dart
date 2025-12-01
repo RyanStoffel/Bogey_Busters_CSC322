@@ -159,7 +159,7 @@ class _FriendsManagementScreenState extends State<FriendsManagementScreen>
   // Tab 1: My Friends
   Widget _buildFriendsList() {
     if (_isLoadingFriends) {
-      return const Center(child: CircularProgressIndicator());
+      return const Center(child: CircularProgressIndicator(color: Colors.green,));
     }
 
     if (_friends.isEmpty) {
@@ -248,7 +248,7 @@ class _FriendsManagementScreenState extends State<FriendsManagementScreen>
       stream: _friendService.getReceivedFriendRequests(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
+          return const Center(child: CircularProgressIndicator(color: Colors.green,));
         }
 
         if (!snapshot.hasData) {

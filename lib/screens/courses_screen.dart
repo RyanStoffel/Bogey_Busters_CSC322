@@ -359,7 +359,7 @@ class _CoursesScreenState extends State<CoursesScreen> {
                       holes: course.holes?.length ?? 18,
                       par: course.totalPar ?? 72,
                       distance: _formatAddress(course),
-                      course: course, // ADD THIS LINE - pass the full course object
+                      course: course,
                       courseLatitude: course.location.latitude,
                       courseLongitude: course.location.longitude,
                       onPreview: () {

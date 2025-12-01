@@ -1,11 +1,11 @@
 import 'package:badges/badges.dart' as badges;
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:golf_tracker_app/models/user.dart';
 import 'package:golf_tracker_app/services/friend_service.dart';
 import 'package:golf_tracker_app/utils/image_helper.dart';
 import 'package:golf_tracker_app/widgets/course_cards.dart';
 import 'package:golf_tracker_app/widgets/user_search_card.dart';
-import 'package:golf_tracker_app/screens/friends_management_screen.dart';
 
 class FriendsScreen extends StatefulWidget {
   const FriendsScreen({super.key});
@@ -407,12 +407,7 @@ class _FriendsScreenState extends State<FriendsScreen> {
         leading: IconButton(
           icon: const Icon(Icons.people),
           onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => const FriendsManagementScreen(),
-              ),
-            ).then((_) => _loadFriendsRounds()); // Refresh when returning
+            context.push('/friends/manage').then((_) => _loadFriendsRounds());
           },
         ),
         actions: [
