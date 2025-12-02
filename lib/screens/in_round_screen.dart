@@ -45,7 +45,18 @@ class _InRoundScreenState extends State<InRoundScreen> {
 
   int? _currentScore;
   int? _currentPutts;
+  int? _currentChipShots;
+  int? _currentPenalties;
+  bool? _currentGreenInRegulation;
+  bool? _currentFairwayHit;
+  bool _isCustomScoreMode = false;
+  final TextEditingController _customScoreController = TextEditingController();
   Map<int, int> _holeScores = {};
+  Map<int, int> _holePutts = {};
+  Map<int, int> _holeChipShots = {};
+  Map<int, int> _holePenalties = {};
+  Map<int, bool> _holeGreenInRegulation = {};
+  Map<int, bool> _holeFairwayHit = {};
 
   Position? _currentPosition;
   StreamSubscription<Position>? _positionStream;
@@ -68,6 +79,88 @@ class _InRoundScreenState extends State<InRoundScreen> {
   Course? get course => widget.course ?? _course;
   String? get teeColor => widget.teeColor ?? _teeColor;
 
+  void _regenerateMarkersAndPolygons() {
+    if (_holes == null || teeColor == null) return;
+
+    _holeMarkers.clear();
+    _holePolygons.clear();
+
+    for (var hole in _holes!) {
+      final holeMarkers = <Marker>{};
+      final holePolygons = <Polygon>{};
+
+      if (hole.teeBoxes != null && hole.teeBoxes!.isNotEmpty) {
+        final selectedTee = hole.teeBoxes!.firstWhere(
+          (tee) => tee.tee.toLowerCase() == teeColor!.toLowerCase(),
+          orElse: () {
+            return hole.teeBoxes!.firstWhere(
+              (tee) => tee.tee
+                  .toLowerCase()
+                  .split(';')
+                  .map((c) => c.trim())
+                  .contains(teeColor!.toLowerCase()),
+              orElse: () => hole.teeBoxes!.first,
+            );
+          },
+        );
+
+        if (selectedTee.location?.latitude != null &&
+            selectedTee.location?.longitude != null) {
+          holeMarkers.add(
+            Marker(
+              markerId: MarkerId('tee_${hole.holeNumber}'),
+              position: LatLng(
+                selectedTee.location!.latitude!,
+                selectedTee.location!.longitude!,
+              ),
+              icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
+            ),
+          );
+        }
+      }
+
+      if (hole.greenLocation?.latitude != null &&
+          hole.greenLocation?.longitude != null) {
+        holeMarkers.add(
+          Marker(
+            markerId: MarkerId('green_${hole.holeNumber}'),
+            position: LatLng(
+              hole.greenLocation!.latitude!,
+              hole.greenLocation!.longitude!,
+            ),
+            icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+          ),
+        );
+      }
+
+      if (hole.greenCoordinates != null && hole.greenCoordinates!.isNotEmpty) {
+        try {
+          final validCoords = hole.greenCoordinates!
+              .where((coord) => coord.latitude != null && coord.longitude != null)
+              .map((coord) => LatLng(coord.latitude!, coord.longitude!))
+              .toList();
+
+          if (validCoords.length >= 3) {
+            holePolygons.add(
+              Polygon(
+                polygonId: PolygonId('green_polygon_${hole.holeNumber}'),
+                points: validCoords,
+                fillColor: Colors.green.withOpacity(0.3),
+                strokeColor: Colors.green,
+                strokeWidth: 2,
+              ),
+            );
+          }
+        } catch (e) {
+          print('Error creating polygon for hole ${hole.holeNumber}: $e');
+        }
+      }
+
+      _holeMarkers[hole.holeNumber] = holeMarkers;
+      _holePolygons[hole.holeNumber] = holePolygons;
+    }
+  }
+
   Future<void> _saveRoundState() async {
     if (_holes == null || _holes!.isEmpty || course == null || teeColor == null) return;
 
@@ -76,6 +169,11 @@ class _InRoundScreenState extends State<InRoundScreen> {
       teeColor: teeColor!,
       holes: _holes!,
       holeScores: _holeScores,
+      holePutts: _holePutts,
+      holeChipShots: _holeChipShots,
+      holePenalties: _holePenalties,
+      holeGreenInRegulation: _holeGreenInRegulation,
+      holeFairwayHit: _holeFairwayHit,
       currentHoleIndex: _currentHoleIndex,
     );
   }
@@ -89,6 +187,11 @@ class _InRoundScreenState extends State<InRoundScreen> {
     setState(() {
       _holes = savedState['holes'] as List<Hole>;
       _holeScores = savedState['holeScores'] as Map<int, int>;
+      _holePutts = savedState['holePutts'] as Map<int, int>? ?? {};
+      _holeChipShots = savedState['holeChipShots'] as Map<int, int>? ?? {};
+      _holePenalties = savedState['holePenalties'] as Map<int, int>? ?? {};
+      _holeGreenInRegulation = savedState['holeGreenInRegulation'] as Map<int, bool>? ?? {};
+      _holeFairwayHit = savedState['holeFairwayHit'] as Map<int, bool>? ?? {};
       _currentHoleIndex = savedState['currentHoleIndex'] as int;
     });
 
@@ -107,6 +210,7 @@ class _InRoundScreenState extends State<InRoundScreen> {
   @override
   void dispose() {
     _positionStream?.cancel();
+    _customScoreController.dispose();
     super.dispose();
   }
 
@@ -538,9 +642,17 @@ class _InRoundScreenState extends State<InRoundScreen> {
         _teeColor = savedState['teeColor'] as String;
         _holes = savedState['holes'] as List<Hole>;
         _holeScores = savedState['holeScores'] as Map<int, int>;
+        _holePutts = savedState['holePutts'] as Map<int, int>? ?? {};
+        _holeChipShots = savedState['holeChipShots'] as Map<int, int>? ?? {};
+        _holePenalties = savedState['holePenalties'] as Map<int, int>? ?? {};
+        _holeGreenInRegulation = savedState['holeGreenInRegulation'] as Map<int, bool>? ?? {};
+        _holeFairwayHit = savedState['holeFairwayHit'] as Map<int, bool>? ?? {};
         _currentHoleIndex = savedState['currentHoleIndex'] as int;
         _isLoadingHoleData = false;
       });
+
+      // Regenerate markers and polygons for all holes
+      _regenerateMarkersAndPolygons();
 
       _updateDistanceToGreen();
       _setMarkerToHoleCenter();
@@ -808,14 +920,524 @@ class _InRoundScreenState extends State<InRoundScreen> {
     return LatLng(newLatRad * 180 / math.pi, newLngRad * 180 / math.pi);
   }
 
+  void _showScorecardModal() {
+    if (_holes == null || _holes!.isEmpty) return;
+
+    // Calculate stats
+    int totalPutts = 0;
+    int totalGIR = 0;
+    int totalFairways = 0;
+    int totalChips = 0;
+    int totalPenalties = 0;
+
+    _holePutts.forEach((_, putts) => totalPutts += putts);
+    _holeGreenInRegulation.forEach((_, gir) { if (gir) totalGIR++; });
+    _holeFairwayHit.forEach((_, hit) { if (hit) totalFairways++; });
+    _holeChipShots.forEach((_, chips) => totalChips += chips);
+    _holePenalties.forEach((_, penalties) => totalPenalties += penalties);
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        height: MediaQuery.of(context).size.height * 0.9,
+        decoration: const BoxDecoration(
+          color: Color(0xFFF5F7FA),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          children: [
+            // Fixed Header
+            Container(
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFF5E7A45), Color(0xFF6B8E4E)],
+                ),
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: SafeArea(
+                bottom: false,
+                child: Column(
+                  children: [
+                    // Title Bar
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(24, 12, 12, 16),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'Scorecard',
+                            style: TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                              letterSpacing: -0.5,
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close_rounded, color: Colors.white, size: 28),
+                            onPressed: () => Navigator.pop(context),
+                            padding: const EdgeInsets.all(8),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // Main Stats
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: _buildMainStatCard(
+                              'Total Score',
+                              '$totalScore',
+                              Icons.sports_golf_rounded,
+                              Colors.white,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _buildMainStatCard(
+                              'To Par',
+                              _relativeToPar == 0
+                                  ? 'Even'
+                                  : '${_relativeToPar > 0 ? '+' : ''}$_relativeToPar',
+                              _relativeToPar > 0
+                                  ? Icons.trending_up_rounded
+                                  : _relativeToPar < 0
+                                      ? Icons.trending_down_rounded
+                                      : Icons.trending_flat_rounded,
+                              _relativeToPar > 0
+                                  ? const Color(0xFFFFE5E5)
+                                  : _relativeToPar < 0
+                                      ? const Color(0xFFE5F5E5)
+                                      : Colors.white,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _buildMainStatCard(
+                              'Putts',
+                              '$totalPutts',
+                              Icons.flag_rounded,
+                              Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // Secondary Stats
+                    Container(
+                      margin: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: Colors.white.withOpacity(0.2),
+                          width: 1,
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceAround,
+                        children: [
+                          _buildSecondaryStatItem(
+                            'GIR',
+                            '$totalGIR/${_holeGreenInRegulation.length}',
+                          ),
+                          Container(
+                            width: 1,
+                            height: 32,
+                            color: Colors.white.withOpacity(0.3),
+                          ),
+                          _buildSecondaryStatItem(
+                            'Fairways',
+                            '$totalFairways/${_holeFairwayHit.length}',
+                          ),
+                          Container(
+                            width: 1,
+                            height: 32,
+                            color: Colors.white.withOpacity(0.3),
+                          ),
+                          _buildSecondaryStatItem(
+                            'Chips',
+                            '$totalChips',
+                          ),
+                          Container(
+                            width: 1,
+                            height: 32,
+                            color: Colors.white.withOpacity(0.3),
+                          ),
+                          _buildSecondaryStatItem(
+                            'Penalties',
+                            '$totalPenalties',
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            // Scrollable Table
+            Expanded(
+              child: Container(
+                margin: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.05),
+                      blurRadius: 10,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: Column(
+                    children: [
+                      // Table Header (sticky)
+                      Container(
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF2D3E1F),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.1),
+                              blurRadius: 4,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          physics: const ClampingScrollPhysics(),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
+                            child: Row(
+                              children: [
+                                _buildTableHeaderCell('Hole', 50),
+                                _buildTableHeaderCell('Par', 45),
+                                _buildTableHeaderCell('Score', 55),
+                                _buildTableHeaderCell('+/-', 45),
+                                _buildTableHeaderCell('Putts', 55),
+                                _buildTableHeaderCell('GIR', 50),
+                                _buildTableHeaderCell('FWY', 50),
+                                _buildTableHeaderCell('Chips', 55),
+                                _buildTableHeaderCell('Pen', 50),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      // Table Body (scrollable)
+                      Expanded(
+                        child: SingleChildScrollView(
+                          physics: const BouncingScrollPhysics(),
+                          child: SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            physics: const ClampingScrollPhysics(),
+                            child: Column(
+                              children: _holes!.map((hole) {
+                                final score = _holeScores[hole.holeNumber];
+                                final par = hole.par ?? 4;
+                                final toPar = score != null ? score - par : null;
+                                final putts = _holePutts[hole.holeNumber];
+                                final gir = _holeGreenInRegulation[hole.holeNumber];
+                                final fairway = _holeFairwayHit[hole.holeNumber];
+                                final chips = _holeChipShots[hole.holeNumber];
+                                final penalties = _holePenalties[hole.holeNumber];
+                                final isCurrentHole = hole.holeNumber == currentHole?.holeNumber;
+
+                                return Material(
+                                  color: Colors.transparent,
+                                  child: InkWell(
+                                    onTap: () {
+                                      Navigator.pop(context);
+                                      setState(() {
+                                        _currentHoleIndex = _holes!.indexOf(hole);
+                                        _currentScore = score;
+                                      });
+                                      _moveCameraToCurrentHole();
+                                      _showScoreBottomSheet();
+                                    },
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
+                                      decoration: BoxDecoration(
+                                        color: isCurrentHole
+                                            ? const Color(0xFFF0F7ED)
+                                            : score != null
+                                                ? const Color(0xFFFAFBFC)
+                                                : Colors.white,
+                                        border: Border(
+                                          bottom: BorderSide(
+                                            color: Colors.grey[200]!,
+                                            width: 1,
+                                          ),
+                                          left: isCurrentHole
+                                              ? const BorderSide(
+                                                  color: Color(0xFF6B8E4E),
+                                                  width: 3,
+                                                )
+                                              : BorderSide.none,
+                                        ),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          _buildTableDataCell(
+                                            '${hole.holeNumber}',
+                                            50,
+                                            FontWeight.bold,
+                                            isCurrentHole
+                                                ? const Color(0xFF6B8E4E)
+                                                : const Color(0xFF2D3E1F),
+                                          ),
+                                          _buildTableDataCell(
+                                            '$par',
+                                            45,
+                                            FontWeight.w500,
+                                            Colors.grey[700]!,
+                                          ),
+                                          _buildTableDataCell(
+                                            score != null ? '$score' : '-',
+                                            55,
+                                            FontWeight.bold,
+                                            score != null
+                                                ? (toPar! > 0
+                                                    ? const Color(0xFFE53935)
+                                                    : toPar < 0
+                                                        ? const Color(0xFF43A047)
+                                                        : const Color(0xFF2D3E1F))
+                                                : Colors.grey[400]!,
+                                          ),
+                                          _buildTableDataCell(
+                                            toPar != null
+                                                ? (toPar == 0 ? 'E' : '${toPar > 0 ? '+' : ''}$toPar')
+                                                : '-',
+                                            45,
+                                            FontWeight.w600,
+                                            toPar != null
+                                                ? (toPar > 0
+                                                    ? const Color(0xFFE53935)
+                                                    : toPar < 0
+                                                        ? const Color(0xFF43A047)
+                                                        : Colors.grey[700]!)
+                                                : Colors.grey[400]!,
+                                          ),
+                                          _buildTableDataCell(
+                                            putts != null ? '$putts' : '-',
+                                            55,
+                                            FontWeight.normal,
+                                            Colors.grey[800]!,
+                                          ),
+                                          _buildTableIconCell(gir, 50),
+                                          _buildTableIconCell(fairway, 50),
+                                          _buildTableDataCell(
+                                            chips != null ? '$chips' : '-',
+                                            55,
+                                            FontWeight.normal,
+                                            Colors.grey[800]!,
+                                          ),
+                                          _buildTableDataCell(
+                                            penalties != null ? '$penalties' : '-',
+                                            50,
+                                            FontWeight.w500,
+                                            penalties != null && penalties > 0
+                                                ? const Color(0xFFE53935)
+                                                : Colors.grey[800]!,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              }).toList(),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMainStatCard(String label, String value, IconData icon, Color bgColor) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Icon(
+            icon,
+            size: 24,
+            color: const Color(0xFF6B8E4E).withOpacity(0.7),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF2D3E1F),
+              letterSpacing: -0.5,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              color: Colors.grey[600],
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.5,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSecondaryStatItem(String label, String value) {
+    return Column(
+      children: [
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 10,
+            color: Colors.white70,
+            fontWeight: FontWeight.w500,
+            letterSpacing: 0.5,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTableHeaderCell(String text, double width) {
+    return SizedBox(
+      width: width,
+      child: Text(
+        text,
+        textAlign: TextAlign.center,
+        style: const TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.bold,
+          color: Colors.white,
+          letterSpacing: 0.5,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTableDataCell(String text, double width, FontWeight weight, Color color) {
+    return SizedBox(
+      width: width,
+      child: Text(
+        text,
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          fontSize: 15,
+          fontWeight: weight,
+          color: color,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTableIconCell(bool? value, double width) {
+    return SizedBox(
+      width: width,
+      child: Center(
+        child: value == null
+            ? Text(
+                '-',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 15,
+                  color: Colors.grey[400],
+                ),
+              )
+            : Container(
+                padding: const EdgeInsets.all(3),
+                decoration: BoxDecoration(
+                  color: value
+                      ? const Color(0xFF43A047).withOpacity(0.1)
+                      : const Color(0xFFE53935).withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  value ? Icons.check_rounded : Icons.close_rounded,
+                  size: 16,
+                  color: value ? const Color(0xFF43A047) : const Color(0xFFE53935),
+                ),
+              ),
+      ),
+    );
+  }
+
+  int get totalScore {
+    int total = 0;
+    _holeScores.forEach((holeNumber, score) {
+      total += score;
+    });
+    return total;
+  }
+
   void _showScoreBottomSheet() {
     if (currentHole == null) return;
 
     final doublePar = (currentHole!.par ?? 4) * 2;
-    final bool isHoleCompleted = _holeScores.containsKey(currentHole!.holeNumber);
+    final holeNumber = currentHole!.holeNumber;
+    final bool isHoleCompleted = _holeScores.containsKey(holeNumber);
 
-    if (isHoleCompleted && _currentScore == null) {
-      _currentScore = _holeScores[currentHole!.holeNumber];
+    // Load all saved stats for this hole if it's completed
+    if (isHoleCompleted) {
+      if (_currentScore == null) _currentScore = _holeScores[holeNumber];
+      if (_currentPutts == null) _currentPutts = _holePutts[holeNumber];
+      if (_currentChipShots == null) _currentChipShots = _holeChipShots[holeNumber];
+      if (_currentPenalties == null) _currentPenalties = _holePenalties[holeNumber];
+      if (_currentGreenInRegulation == null) _currentGreenInRegulation = _holeGreenInRegulation[holeNumber];
+      if (_currentFairwayHit == null) _currentFairwayHit = _holeFairwayHit[holeNumber];
     }
 
     showModalBottomSheet(
@@ -825,12 +1447,19 @@ class _InRoundScreenState extends State<InRoundScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (context) => StatefulBuilder(
-        builder: (context, setModalState) => Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+        builder: (context, setModalState) => DraggableScrollableSheet(
+          initialChildSize: 0.9,
+          minChildSize: 0.5,
+          maxChildSize: 0.95,
+          expand: false,
+          builder: (context, scrollController) => SingleChildScrollView(
+            controller: scrollController,
+            child: Padding(
+              padding: const EdgeInsets.all(24.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
               // Header
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -846,8 +1475,16 @@ class _InRoundScreenState extends State<InRoundScreen> {
                     icon: const Icon(Icons.close),
                     onPressed: () {
                       if (!isHoleCompleted) {
-                        _currentScore = null;
-                        _currentPutts = null;
+                        setState(() {
+                          _currentScore = null;
+                          _currentPutts = null;
+                          _currentChipShots = null;
+                          _currentPenalties = null;
+                          _currentGreenInRegulation = null;
+                          _currentFairwayHit = null;
+                          _isCustomScoreMode = false;
+                          _customScoreController.clear();
+                        });
                       }
                       Navigator.pop(context);
                     },
@@ -864,34 +1501,89 @@ class _InRoundScreenState extends State<InRoundScreen> {
               ),
               const SizedBox(height: 24),
 
-              const Text(
-                'Score',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Score',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () {
+                      setModalState(() {
+                        _isCustomScoreMode = !_isCustomScoreMode;
+                        if (!_isCustomScoreMode) {
+                          _customScoreController.clear();
+                          if (_customScoreController.text.isNotEmpty) {
+                            _currentScore = int.tryParse(_customScoreController.text);
+                          }
+                        } else {
+                          _currentScore = null;
+                        }
+                      });
+                    },
+                    child: Text(
+                      _isCustomScoreMode ? 'Presets' : 'Other',
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF6B8E4E),
+                      ),
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 12),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: List.generate(
-                  doublePar,
-                  (index) {
-                    final score = index + 1;
-                    final isSelected = _currentScore == score;
-                    return _buildScoreChip(
-                      score,
-                      isSelected,
-                      () {
-                        setModalState(() {
-                          _currentScore = score;
-                        });
-                      },
-                    );
+              if (_isCustomScoreMode)
+                TextField(
+                  controller: _customScoreController,
+                  keyboardType: TextInputType.number,
+                  autofocus: true,
+                  decoration: InputDecoration(
+                    hintText: 'Enter score',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: Color(0xFF6B8E4E), width: 2),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide(color: Colors.grey[300]!, width: 2),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: Color(0xFF6B8E4E), width: 2),
+                    ),
+                  ),
+                  onChanged: (value) {
+                    setModalState(() {
+                      _currentScore = int.tryParse(value);
+                    });
                   },
+                )
+              else
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: List.generate(
+                    doublePar,
+                    (index) {
+                      final score = index + 1;
+                      final isSelected = _currentScore == score;
+                      return _buildScoreChip(
+                        score,
+                        isSelected,
+                        () {
+                          setModalState(() {
+                            _currentScore = score;
+                          });
+                        },
+                      );
+                    },
+                  ),
                 ),
-              ),
 
               const SizedBox(height: 24),
 
@@ -925,6 +1617,244 @@ class _InRoundScreenState extends State<InRoundScreen> {
                     () {
                       setModalState(() {
                         _currentPutts = 4;
+                      });
+                    },
+                    label: '4+',
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 24),
+
+              // Green in Regulation
+              const Text(
+                'Green in Regulation',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () {
+                        setModalState(() {
+                          _currentGreenInRegulation = true;
+                        });
+                      },
+                      child: Container(
+                        height: 56,
+                        decoration: BoxDecoration(
+                          color: _currentGreenInRegulation == true
+                              ? const Color(0xFF6B8E4E)
+                              : Colors.white,
+                          border: Border.all(
+                            color: _currentGreenInRegulation == true
+                                ? const Color(0xFF6B8E4E)
+                                : Colors.grey[300]!,
+                            width: 2,
+                          ),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(
+                          Icons.check,
+                          size: 32,
+                          color: _currentGreenInRegulation == true
+                              ? Colors.white
+                              : Colors.grey[400],
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () {
+                        setModalState(() {
+                          _currentGreenInRegulation = false;
+                        });
+                      },
+                      child: Container(
+                        height: 56,
+                        decoration: BoxDecoration(
+                          color: _currentGreenInRegulation == false
+                              ? Colors.red[400]
+                              : Colors.white,
+                          border: Border.all(
+                            color: _currentGreenInRegulation == false
+                                ? Colors.red[400]!
+                                : Colors.grey[300]!,
+                            width: 2,
+                          ),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(
+                          Icons.close,
+                          size: 32,
+                          color: _currentGreenInRegulation == false
+                              ? Colors.white
+                              : Colors.grey[400],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 24),
+
+              // Fairway Hit
+              const Text(
+                'Fairway Hit',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () {
+                        setModalState(() {
+                          _currentFairwayHit = true;
+                        });
+                      },
+                      child: Container(
+                        height: 56,
+                        decoration: BoxDecoration(
+                          color: _currentFairwayHit == true
+                              ? const Color(0xFF6B8E4E)
+                              : Colors.white,
+                          border: Border.all(
+                            color: _currentFairwayHit == true
+                                ? const Color(0xFF6B8E4E)
+                                : Colors.grey[300]!,
+                            width: 2,
+                          ),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(
+                          Icons.check,
+                          size: 32,
+                          color: _currentFairwayHit == true
+                              ? Colors.white
+                              : Colors.grey[400],
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () {
+                        setModalState(() {
+                          _currentFairwayHit = false;
+                        });
+                      },
+                      child: Container(
+                        height: 56,
+                        decoration: BoxDecoration(
+                          color: _currentFairwayHit == false
+                              ? Colors.red[400]
+                              : Colors.white,
+                          border: Border.all(
+                            color: _currentFairwayHit == false
+                                ? Colors.red[400]!
+                                : Colors.grey[300]!,
+                            width: 2,
+                          ),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(
+                          Icons.close,
+                          size: 32,
+                          color: _currentFairwayHit == false
+                              ? Colors.white
+                              : Colors.grey[400],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 24),
+
+              // Chip Shots
+              const Text(
+                'Chip Shots',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                children: [
+                  ...List.generate(4, (index) {
+                    final chipShots = index;
+                    final isSelected = _currentChipShots == chipShots;
+                    return _buildScoreChip(
+                      chipShots,
+                      isSelected,
+                      () {
+                        setModalState(() {
+                          _currentChipShots = chipShots;
+                        });
+                      },
+                    );
+                  }),
+                  _buildScoreChip(
+                    -1,
+                    _currentChipShots == 4,
+                    () {
+                      setModalState(() {
+                        _currentChipShots = 4;
+                      });
+                    },
+                    label: '4+',
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 24),
+
+              // Penalties
+              const Text(
+                'Penalties',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                children: [
+                  ...List.generate(4, (index) {
+                    final penalties = index;
+                    final isSelected = _currentPenalties == penalties;
+                    return _buildScoreChip(
+                      penalties,
+                      isSelected,
+                      () {
+                        setModalState(() {
+                          _currentPenalties = penalties;
+                        });
+                      },
+                    );
+                  }),
+                  _buildScoreChip(
+                    -1,
+                    _currentPenalties == 4,
+                    () {
+                      setModalState(() {
+                        _currentPenalties = 4;
                       });
                     },
                     label: '4+',
@@ -991,9 +1921,11 @@ class _InRoundScreenState extends State<InRoundScreen> {
                   ),
                 ),
               ],
-              
-              SizedBox(height: MediaQuery.of(context).viewInsets.bottom),
-            ],
+
+              SizedBox(height: MediaQuery.of(context).viewInsets.bottom + 24),
+                ],
+              ),
+            ),
           ),
         ),
       ),
@@ -1067,7 +1999,15 @@ class _InRoundScreenState extends State<InRoundScreen> {
   }
 
   void _finishHole() async {
-    _holeScores[currentHole!.holeNumber] = _currentScore!;
+    final holeNumber = currentHole!.holeNumber;
+
+    // Save all hole stats
+    _holeScores[holeNumber] = _currentScore!;
+    if (_currentPutts != null) _holePutts[holeNumber] = _currentPutts!;
+    if (_currentChipShots != null) _holeChipShots[holeNumber] = _currentChipShots!;
+    if (_currentPenalties != null) _holePenalties[holeNumber] = _currentPenalties!;
+    if (_currentGreenInRegulation != null) _holeGreenInRegulation[holeNumber] = _currentGreenInRegulation!;
+    if (_currentFairwayHit != null) _holeFairwayHit[holeNumber] = _currentFairwayHit!;
 
     await _saveRoundState();
 
@@ -1076,6 +2016,12 @@ class _InRoundScreenState extends State<InRoundScreen> {
         _currentHoleIndex++;
         _currentScore = null;
         _currentPutts = null;
+        _currentChipShots = null;
+        _currentPenalties = null;
+        _currentGreenInRegulation = null;
+        _currentFairwayHit = null;
+        _isCustomScoreMode = false;
+        _customScoreController.clear();
       });
 
       _updateDistanceToGreen();
@@ -1254,14 +2200,14 @@ class _InRoundScreenState extends State<InRoundScreen> {
                       child: Row(
                         children: [
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF4C4E52),
-                              borderRadius: BorderRadius.circular(10),
+                              color: const Color(0xFF4C4E52).withOpacity(0.95),
+                              borderRadius: BorderRadius.circular(12),
                               boxShadow: [
                                 BoxShadow(
-                                  color: Colors.black.withOpacity(0.2),
-                                  blurRadius: 6,
+                                  color: Colors.black.withOpacity(0.3),
+                                  blurRadius: 8,
                                   offset: const Offset(0, 2),
                                 ),
                               ],
@@ -1272,12 +2218,12 @@ class _InRoundScreenState extends State<InRoundScreen> {
                                 Text(
                                   '${currentHole!.holeNumber}',
                                   style: const TextStyle(
-                                    fontSize: 20,
+                                    fontSize: 24,
                                     fontWeight: FontWeight.bold,
                                     color: Colors.white,
                                   ),
                                 ),
-                                const SizedBox(width: 8),
+                                const SizedBox(width: 10),
                                 Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   mainAxisSize: MainAxisSize.min,
@@ -1285,25 +2231,25 @@ class _InRoundScreenState extends State<InRoundScreen> {
                                     const Text(
                                       'Mid Green',
                                       style: TextStyle(
-                                        fontSize: 9,
+                                        fontSize: 10,
                                         color: Colors.white70,
-                                        fontWeight: FontWeight.w600,
+                                        fontWeight: FontWeight.bold,
                                       ),
                                     ),
-                                    const SizedBox(height: 1),
+                                    const SizedBox(height: 2),
                                     Text(
                                       _distanceToGreen != null
-                                          ? '${_distanceToGreen!.round()} yds'
+                                          ? '${_distanceToGreen!.round()}y'
                                           : 'Calc...',
                                       style: const TextStyle(
-                                        fontSize: 13,
+                                        fontSize: 15,
                                         fontWeight: FontWeight.bold,
                                         color: Colors.white,
                                       ),
                                     ),
                                   ],
                                 ),
-                                const SizedBox(width: 6),
+                                const SizedBox(width: 8),
                                 GestureDetector(
                                   onTap: () {
                                     setState(() {
@@ -1315,96 +2261,107 @@ class _InRoundScreenState extends State<InRoundScreen> {
                                         ? Icons.chevron_left
                                         : Icons.chevron_right,
                                     color: Colors.white,
-                                    size: 20,
+                                    size: 22,
                                   ),
                                 ),
                               ],
                             ),
                           ),
                           if (_isHeaderExpanded)
-                            Expanded(
+                            Flexible(
                               child: Container(
+                                height: 56,
                                 margin: const EdgeInsets.only(left: 6),
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFF4C4E52).withOpacity(0.9),
-                                  borderRadius: BorderRadius.circular(10),
+                                  color: const Color(0xFF4C4E52).withOpacity(0.95),
+                                  borderRadius: BorderRadius.circular(12),
                                   boxShadow: [
                                     BoxShadow(
-                                      color: Colors.black.withOpacity(0.2),
-                                      blurRadius: 6,
+                                      color: Colors.black.withOpacity(0.3),
+                                      blurRadius: 8,
                                       offset: const Offset(0, 2),
                                     ),
                                   ],
                                 ),
                                 child: Row(
                                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                                  mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        const Text(
-                                          'Par',
-                                          style: TextStyle(
-                                            fontSize: 8,
-                                            color: Colors.white70,
-                                            fontWeight: FontWeight.w600,
+                                    Flexible(
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          const Text(
+                                            'Par',
+                                            style: TextStyle(
+                                              fontSize: 9,
+                                              color: Colors.white70,
+                                              fontWeight: FontWeight.bold,
+                                            ),
                                           ),
-                                        ),
-                                        const SizedBox(height: 1),
-                                        Text(
-                                          '${currentHole!.par ?? "?"}',
-                                          style: const TextStyle(
-                                            fontSize: 13,
-                                            fontWeight: FontWeight.bold,
-                                            color: Colors.white,
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            '${currentHole!.par ?? "?"}',
+                                            style: const TextStyle(
+                                              fontSize: 15,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.white,
+                                            ),
                                           ),
-                                        ),
-                                      ],
+                                        ],
+                                      ),
                                     ),
-                                    Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Text(
-                                          teeColor ?? '?',
-                                          style: const TextStyle(
-                                            fontSize: 8,
-                                            color: Colors.white70,
-                                            fontWeight: FontWeight.w600,
+                                    const SizedBox(width: 8),
+                                    Flexible(
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Text(
+                                            teeColor ?? '?',
+                                            style: const TextStyle(
+                                              fontSize: 9,
+                                              color: Colors.white70,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                            overflow: TextOverflow.ellipsis,
                                           ),
-                                        ),
-                                        const SizedBox(height: 1),
-                                        Text(
-                                          '${currentTeeBox?.yards ?? "?"} yds',
-                                          style: const TextStyle(
-                                            fontSize: 13,
-                                            fontWeight: FontWeight.bold,
-                                            color: Colors.white,
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            '${currentTeeBox?.yards ?? "?"}y',
+                                            style: const TextStyle(
+                                              fontSize: 15,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.white,
+                                            ),
                                           ),
-                                        ),
-                                      ],
+                                        ],
+                                      ),
                                     ),
-                                    Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        const Text(
-                                          'HCP',
-                                          style: TextStyle(
-                                            fontSize: 8,
-                                            color: Colors.white70,
-                                            fontWeight: FontWeight.w600,
+                                    const SizedBox(width: 8),
+                                    Flexible(
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          const Text(
+                                            'HCP',
+                                            style: TextStyle(
+                                              fontSize: 9,
+                                              color: Colors.white70,
+                                              fontWeight: FontWeight.bold,
+                                            ),
                                           ),
-                                        ),
-                                        const SizedBox(height: 1),
-                                        Text(
-                                          '${currentHole!.handicap ?? "?"}',
-                                          style: const TextStyle(
-                                            fontSize: 13,
-                                            fontWeight: FontWeight.bold,
-                                            color: Colors.white,
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            '${currentHole!.handicap ?? "?"}',
+                                            style: const TextStyle(
+                                              fontSize: 15,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.white,
+                                            ),
                                           ),
-                                        ),
-                                      ],
+                                        ],
+                                      ),
                                     ),
                                   ],
                                 ),
@@ -1417,73 +2374,113 @@ class _InRoundScreenState extends State<InRoundScreen> {
                 ),
               ),
 
+            // Location Reset Button
+            Positioned(
+              bottom: 24,
+              left: 24,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.95),
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.2),
+                      blurRadius: 10,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
+                ),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: _moveCameraToCurrentHole,
+                    borderRadius: BorderRadius.circular(24),
+                    child: Container(
+                      width: 48,
+                      height: 48,
+                      padding: const EdgeInsets.all(12),
+                      child: const Icon(
+                        Icons.my_location,
+                        color: Color(0xFF6B8E4E),
+                        size: 24,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
             if (_holeScores.isNotEmpty)
               Positioned(
-                bottom: 32,
-                right: 16,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.95),
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.15),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        _relativeToPar == 0
-                            ? 'E'
-                            : '${_relativeToPar > 0 ? '+' : ''}$_relativeToPar',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: _relativeToPar > 0
-                              ? Colors.red
-                              : _relativeToPar < 0
-                                  ? Colors.green
-                                  : Colors.grey[800],
+                bottom: 24,
+                right: 24,
+                child: GestureDetector(
+                  onTap: _showScorecardModal,
+                  child: Container(
+                    height: 48,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.95),
+                      borderRadius: BorderRadius.circular(24),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.2),
+                          blurRadius: 10,
+                          offset: const Offset(0, 3),
                         ),
-                      ),
-                      const SizedBox(width: 6),
-                      Container(
-                        width: 1,
-                        height: 20,
-                        color: Colors.grey[300],
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        'T${_holeScores.length}',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.grey[700],
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          _relativeToPar == 0
+                              ? 'E'
+                              : '${_relativeToPar > 0 ? '+' : ''}$_relativeToPar',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: _relativeToPar > 0
+                                ? Colors.red
+                                : _relativeToPar < 0
+                                    ? Colors.green
+                                    : Colors.grey[800],
+                          ),
                         ),
-                      ),
-                    ],
+                        const SizedBox(width: 5),
+                        Container(
+                          width: 1,
+                          height: 16,
+                          color: Colors.grey[300],
+                        ),
+                        const SizedBox(width: 5),
+                        Text(
+                          'T${_holeScores.length}',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.grey[700],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
 
             if (currentHole != null)
               Positioned(
-                bottom: 32,
-                left: 48,
-                right: 48,
+                bottom: 24,
+                left: 90,
+                right: 90,
                 child: Center(
                   child: Container(
                     decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(32),
+                      borderRadius: BorderRadius.circular(16),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.2),
-                          blurRadius: 8,
+                          color: Colors.black.withOpacity(0.3),
+                          blurRadius: 12,
                           offset: const Offset(0, 4),
                         ),
                       ],
@@ -1491,75 +2488,94 @@ class _InRoundScreenState extends State<InRoundScreen> {
                    child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        if (_currentHoleIndex > 0)
-                          Container(
-                            width: 64,
-                            height: 64,
-                            decoration: BoxDecoration(
-                              color: const Color(0x4C4E52).withOpacity(0.9),
-                              borderRadius: const BorderRadius.only(
-                                topLeft: Radius.circular(24),
-                                bottomLeft: Radius.circular(24),
-                              ),
-                            ),
-                            child: Material(
-                              color: Colors.transparent,
-                              child: InkWell(
-                                onTap: () {
-                                  setState(() {
-                                    _currentHoleIndex--;
-                                    _currentScore = _holeScores[currentHole!.holeNumber];
-                                    _currentPutts = null;
-                                  });
-                                  _updateDistanceToGreen();
-                                  _setMarkerToHoleCenter();
-                                  _moveCameraToCurrentHole();
-                                },
-                                child: const Center(
-                                  child: Icon(
-                                    Icons.chevron_left,
-                                    color: Colors.white,
-                                    size: 32,
-                                  ),
-                                ),
-                              ),
+                        // Left Arrow (always present for layout consistency)
+                        Container(
+                          width: 48,
+                          height: 48,
+                          decoration: BoxDecoration(
+                            color: _currentHoleIndex > 0
+                                ? const Color(0xFF4C4E52).withOpacity(0.95)
+                                : Colors.transparent,
+                            borderRadius: const BorderRadius.only(
+                              topLeft: Radius.circular(16),
+                              bottomLeft: Radius.circular(16),
                             ),
                           ),
+                          child: _currentHoleIndex > 0
+                              ? Material(
+                                  color: Colors.transparent,
+                                  child: InkWell(
+                                    onTap: () {
+                                      setState(() {
+                                        _currentHoleIndex--;
+                                        final holeNumber = currentHole!.holeNumber;
+                                        _currentScore = _holeScores[holeNumber];
+                                        _currentPutts = _holePutts[holeNumber];
+                                        _currentChipShots = _holeChipShots[holeNumber];
+                                        _currentPenalties = _holePenalties[holeNumber];
+                                        _currentGreenInRegulation = _holeGreenInRegulation[holeNumber];
+                                        _currentFairwayHit = _holeFairwayHit[holeNumber];
+                                        _isCustomScoreMode = false;
+                                        _customScoreController.clear();
+                                      });
+                                      _updateDistanceToGreen();
+                                      _setMarkerToHoleCenter();
+                                      _moveCameraToCurrentHole();
+                                    },
+                                    child: const Center(
+                                      child: Icon(
+                                        Icons.chevron_left,
+                                        color: Colors.white,
+                                        size: 28,
+                                      ),
+                                    ),
+                                  ),
+                                )
+                              : const SizedBox(), // Empty space when no arrow
+                        ),
                         Material(
                           color: const Color(0xFF6B8E4E),
                           borderRadius: BorderRadius.horizontal(
                             left: _currentHoleIndex == 0
-                                ? const Radius.circular(12)
+                                ? const Radius.circular(16)
                                 : Radius.zero,
                             right: _currentHoleIndex == (_holes?.length ?? 0) - 1
-                                ? const Radius.circular(12)
+                                ? const Radius.circular(16)
                                 : Radius.zero,
                           ),
                           child: InkWell(
                             onTap: _showScoreBottomSheet,
+                            borderRadius: BorderRadius.horizontal(
+                              left: _currentHoleIndex == 0
+                                  ? const Radius.circular(16)
+                                  : Radius.zero,
+                              right: _currentHoleIndex == (_holes?.length ?? 0) - 1
+                                  ? const Radius.circular(16)
+                                  : Radius.zero,
+                            ),
                             child: Container(
-                              width: 160,
-                              height: 64,
-                              padding: const EdgeInsets.symmetric(horizontal: 16),
+                              width: 100,
+                              height: 48,
+                              padding: const EdgeInsets.symmetric(horizontal: 12),
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
                                   Text(
                                     _holeScores.containsKey(currentHole!.holeNumber)
-                                        ? 'Edit Hole ${currentHole!.holeNumber}'
+                                        ? 'Edit ${currentHole!.holeNumber}'
                                         : 'Hole ${currentHole!.holeNumber}',
                                     style: const TextStyle(
                                       color: Colors.white,
-                                      fontSize: 18,
+                                      fontSize: 15,
                                       fontWeight: FontWeight.bold,
                                     ),
                                   ),
-                                  const SizedBox(height: 2),
+                                  const SizedBox(height: 1),
                                   const Text(
                                     'Enter Score',
                                     style: TextStyle(
                                       color: Colors.white70,
-                                      fontSize: 12,
+                                      fontSize: 10,
                                     ),
                                   ),
                                 ],
@@ -1567,40 +2583,51 @@ class _InRoundScreenState extends State<InRoundScreen> {
                             ),
                           ),
                         ),
-                        if (_currentHoleIndex < (_holes?.length ?? 0) - 1)
-                          Container(
-                            width: 64,
-                            height: 64,
-                            decoration: BoxDecoration(
-                              color: const Color(0x4C4E52).withOpacity(0.9),
-                              borderRadius: const BorderRadius.only(
-                                topRight: Radius.circular(24),
-                                bottomRight: Radius.circular(24),
-                              ),
-                            ),
-                            child: Material(
-                              color: Colors.transparent,
-                              child: InkWell(
-                                onTap: () {
-                                  setState(() {
-                                    _currentHoleIndex++;
-                                    _currentScore = _holeScores[currentHole!.holeNumber];
-                                    _currentPutts = null;
-                                  });
-                                  _updateDistanceToGreen();
-                                  _setMarkerToHoleCenter();
-                                  _moveCameraToCurrentHole();
-                                },
-                                child: const Center(
-                                  child: Icon(
-                                    Icons.chevron_right,
-                                    color: Colors.white,
-                                    size: 32,
-                                  ),
-                                ),
-                              ),
+                        // Right Arrow (always present for layout consistency)
+                        Container(
+                          width: 48,
+                          height: 48,
+                          decoration: BoxDecoration(
+                            color: _currentHoleIndex < (_holes?.length ?? 0) - 1
+                                ? const Color(0xFF4C4E52).withOpacity(0.95)
+                                : Colors.transparent,
+                            borderRadius: const BorderRadius.only(
+                              topRight: Radius.circular(16),
+                              bottomRight: Radius.circular(16),
                             ),
                           ),
+                          child: _currentHoleIndex < (_holes?.length ?? 0) - 1
+                              ? Material(
+                                  color: Colors.transparent,
+                                  child: InkWell(
+                                    onTap: () {
+                                      setState(() {
+                                        _currentHoleIndex++;
+                                        final holeNumber = currentHole!.holeNumber;
+                                        _currentScore = _holeScores[holeNumber];
+                                        _currentPutts = _holePutts[holeNumber];
+                                        _currentChipShots = _holeChipShots[holeNumber];
+                                        _currentPenalties = _holePenalties[holeNumber];
+                                        _currentGreenInRegulation = _holeGreenInRegulation[holeNumber];
+                                        _currentFairwayHit = _holeFairwayHit[holeNumber];
+                                        _isCustomScoreMode = false;
+                                        _customScoreController.clear();
+                                      });
+                                      _updateDistanceToGreen();
+                                      _setMarkerToHoleCenter();
+                                      _moveCameraToCurrentHole();
+                                    },
+                                    child: const Center(
+                                      child: Icon(
+                                        Icons.chevron_right,
+                                        color: Colors.white,
+                                        size: 28,
+                                      ),
+                                    ),
+                                  ),
+                                )
+                              : const SizedBox(), // Empty space when no arrow
+                        ),
                       ],
                     ),
                   ),

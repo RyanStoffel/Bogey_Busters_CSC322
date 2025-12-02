@@ -393,7 +393,7 @@ class EndOfRoundScreen extends StatelessWidget {
             crossAxisCount: 9,
             crossAxisSpacing: 8,
             mainAxisSpacing: 8,
-            childAspectRatio: 0.8,
+            childAspectRatio: 0.55,
           ),
           itemCount: sectionHoles.length,
           itemBuilder: (context, index) {
@@ -431,7 +431,6 @@ class EndOfRoundScreen extends StatelessWidget {
                       color: Colors.grey[600],
                     ),
                   ),
-                  const SizedBox(height: 2),
                   Text(
                     '$score',
                     style: TextStyle(

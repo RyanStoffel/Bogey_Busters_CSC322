@@ -5,6 +5,8 @@ import 'package:go_router/go_router.dart';
 import 'package:golf_tracker_app/services/services.dart';
 import 'package:golf_tracker_app/utils/image_helper.dart';
 import 'package:golf_tracker_app/widgets/course_cards.dart';
+import 'package:url_launcher/url_launcher.dart';
+
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -148,13 +150,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               _buildFounderCard(
                                 name: 'Ryan Stoffel',
                                 role: 'Co-Founder & Developer',
-                                bio: 'Passionate about golf and technology. Building tools that make the game more accessible and enjoyable for everyone.',
+                                bio: 'Junior Computer Science Student @ California Baptist University. Golf addict, and technology nerd. Bogey Busters is my passion project, building an app that I love using and providing it to the community.',
                               ),
                               const SizedBox(height: 12),
                               _buildFounderCard(
                                 name: 'Payton Henry',
                                 role: 'Co-Founder & Developer',
-                                bio: 'Golf enthusiast and app developer. Dedicated to creating a free, powerful alternative to expensive golf tracking apps.',
+                                bio: 'Junior Computer Science Student @ California Baptist University. Golf enthusiast and app developer. Dedicated to creating a free, powerful alternative to expensive golf tracking apps.',
                               ),
                             ],
                           ),
@@ -170,8 +172,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           child: Padding(
                             padding: const EdgeInsets.only(top: 12),
                             child: ElevatedButton.icon(
-                              onPressed: () {
-                                
+                              onPressed: () async {
+                                const url = 'https://github.com/RyanStoffel/Bogey_Busters_CSC322';
+                                if (await canLaunchUrl(Uri.parse(url))) {
+                                  await launchUrl(
+                                    Uri.parse(url),
+                                    mode: LaunchMode.externalApplication,
+                                  );
+                                }
                               },
                               icon: const Icon(Icons.open_in_new),
                               label: const Text('View on GitHub'),
