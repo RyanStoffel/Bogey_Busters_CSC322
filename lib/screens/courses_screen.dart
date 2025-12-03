@@ -7,6 +7,7 @@ import 'package:golf_tracker_app/models/models.dart';
 import 'package:golf_tracker_app/services/course_service.dart';
 import 'package:golf_tracker_app/services/firestore_service.dart';
 import 'package:golf_tracker_app/services/overpass_api_service.dart';
+import 'package:golf_tracker_app/services/favorites_service.dart';
 import 'package:golf_tracker_app/utils/image_helper.dart';
 import 'package:golf_tracker_app/widgets/course_cards.dart';
 
@@ -21,15 +22,24 @@ class _CoursesScreenState extends State<CoursesScreen> {
   final OverpassApiService _overpassApiService = OverpassApiService();
   final CourseService _courseService = CourseService();
   final FirestoreService _firestoreService = FirestoreService();
+  final FavoritesService _favoritesService = FavoritesService();
   final TextEditingController _searchController = TextEditingController();
   late Future<List<Course>> _courses;
   int _displayCount = 5;
   String _searchQuery = '';
 
+  // Filter variables
+  bool _showFavoritesOnly = false;
+  bool _filter9Holes = false;
+  bool _filter18Holes = false;
+
   // Cache variables
   static List<Course>? _cachedCourses;
   static DateTime? _lastFetchTime;
   static const Duration _cacheDuration = Duration(minutes: 30); // Cache for 30 minutes
+
+  // Image mapping - persist images for each course across scrolling
+  static final Map<String, String> _courseImages = {};
 
   @override
   void initState() {
@@ -66,22 +76,46 @@ class _CoursesScreenState extends State<CoursesScreen> {
     });
   }
 
-  List<Course> _filterCourses(List<Course> courses) {
-    if (_searchQuery.isEmpty) {
-      return courses;
+  Future<List<Course>> _filterCourses(List<Course> courses) async {
+    List<Course> filtered = courses;
+
+    // Filter by favorites
+    if (_showFavoritesOnly) {
+      final favoriteCourseIds = await _favoritesService.getFavorites();
+      filtered = filtered.where((course) => favoriteCourseIds.contains(course.courseId)).toList();
     }
 
-    return courses.where((course) {
-      final courseName = course.courseName.toLowerCase();
-      final address = _formatAddress(course).toLowerCase();
-      final city = course.courseCity?.toLowerCase() ?? '';
-      final state = course.courseState?.toLowerCase() ?? '';
+    // Filter by hole count
+    if (_filter9Holes || _filter18Holes) {
+      filtered = filtered.where((course) {
+        final holeCount = course.holes?.length ?? 18;
+        if (_filter9Holes && _filter18Holes) {
+          return holeCount == 9 || holeCount == 18;
+        } else if (_filter9Holes) {
+          return holeCount == 9;
+        } else if (_filter18Holes) {
+          return holeCount == 18;
+        }
+        return true;
+      }).toList();
+    }
 
-      return courseName.contains(_searchQuery) ||
-          address.contains(_searchQuery) ||
-          city.contains(_searchQuery) ||
-          state.contains(_searchQuery);
-    }).toList();
+    // Filter by search query
+    if (_searchQuery.isNotEmpty) {
+      filtered = filtered.where((course) {
+        final courseName = course.courseName.toLowerCase();
+        final address = _formatAddress(course).toLowerCase();
+        final city = course.courseCity?.toLowerCase() ?? '';
+        final state = course.courseState?.toLowerCase() ?? '';
+
+        return courseName.contains(_searchQuery) ||
+            address.contains(_searchQuery) ||
+            city.contains(_searchQuery) ||
+            state.contains(_searchQuery);
+      }).toList();
+    }
+
+    return filtered;
   }
 
   Future<List<Course>> _loadCourses({bool fetchFromApi = false}) async {
@@ -212,12 +246,150 @@ class _CoursesScreenState extends State<CoursesScreen> {
   String _formatAddress(Course course) {
     final parts = <String>[];
 
-    if (course.courseHouseNumber != null) parts.add(course.courseHouseNumber!);
-    if (course.courseStreetAddress != null) parts.add(course.courseStreetAddress!);
     if (course.courseCity != null) parts.add(course.courseCity!);
     if (course.courseState != null) parts.add(course.courseState!);
 
     return parts.isEmpty ? 'Address not available' : parts.join(', ');
+  }
+
+  String _getCourseImage(String courseId) {
+    // If we already have an image for this course, return it
+    if (_courseImages.containsKey(courseId)) {
+      return _courseImages[courseId]!;
+    }
+
+    // Otherwise, generate a random image and store it
+    final image = getRandomCourseImage();
+    _courseImages[courseId] = image;
+    return image;
+  }
+
+  void _showFilterBottomSheet() {
+    bool temp9Holes = _filter9Holes;
+    bool temp18Holes = _filter18Holes;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setModalState) {
+            return Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+              ),
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Title
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Filter Courses',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black,
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => Navigator.of(context).pop(),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  const Divider(),
+                  const SizedBox(height: 16),
+
+                  // Hole count filters
+                  const Text(
+                    'Hole Count',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  CheckboxListTile(
+                    title: const Text('9 Holes'),
+                    value: temp9Holes,
+                    activeColor: Colors.green,
+                    onChanged: (bool? value) {
+                      setModalState(() {
+                        temp9Holes = value ?? false;
+                      });
+                    },
+                  ),
+                  CheckboxListTile(
+                    title: const Text('18 Holes'),
+                    value: temp18Holes,
+                    activeColor: Colors.green,
+                    onChanged: (bool? value) {
+                      setModalState(() {
+                        temp18Holes = value ?? false;
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 24),
+
+                  // Action buttons
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () {
+                            setModalState(() {
+                              temp9Holes = false;
+                              temp18Holes = false;
+                            });
+                          },
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.green,
+                            side: const BorderSide(color: Colors.green),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          child: const Text('Clear All'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: () {
+                            setState(() {
+                              _filter9Holes = temp9Holes;
+                              _filter18Holes = temp18Holes;
+                            });
+                            Navigator.of(context).pop();
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.green,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          child: const Text('Show Results'),
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: MediaQuery.of(context).viewInsets.bottom),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   void _showSuggestCourseDialog() {
@@ -386,41 +558,116 @@ class _CoursesScreenState extends State<CoursesScreen> {
       ),
       body: Column(
         children: [
-          // Search Bar
+          // Search Bar and Filter Buttons
           Padding(
             padding: const EdgeInsets.all(16.0),
-            child: TextField(
-              cursorColor: Colors.green,
-              
-              controller: _searchController,
-              decoration: InputDecoration(
-                hintText: 'Search courses...',
-                prefixIcon: const Icon(Icons.search, color: Colors.green),
-                suffixIcon: _searchQuery.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear, color: Colors.green),
-                        onPressed: () {
-                          _searchController.clear();
-                        },
-                      )
-                    : null,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: Colors.green),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    cursorColor: Colors.green,
+                    controller: _searchController,
+                    decoration: InputDecoration(
+                      hintText: 'Search Course',
+                      prefixIcon: const Icon(Icons.search, color: Colors.green),
+                      suffixIcon: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (_searchQuery.isNotEmpty)
+                            IconButton(
+                              icon: const Icon(Icons.clear, color: Colors.green),
+                              onPressed: () {
+                                _searchController.clear();
+                              },
+                            ),
+                          IconButton(
+                            icon: const Icon(Icons.filter_list, color: Colors.green),
+                            onPressed: _showFilterBottomSheet,
+                          ),
+                        ],
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(30),
+                        borderSide: const BorderSide(color: Colors.green),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(30),
+                        borderSide: const BorderSide(color: Colors.green, width: 2),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(30),
+                        borderSide: BorderSide(color: Colors.green.withOpacity(0.5)),
+                      ),
+                      filled: true,
+                      fillColor: Colors.grey[100],
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                    ),
+                  ),
                 ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: Colors.green, width: 2),
+                const SizedBox(width: 12),
+                // Favorites Filter Button
+                Container(
+                  decoration: BoxDecoration(
+                    color: _showFavoritesOnly ? Colors.red : Colors.grey[100],
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: _showFavoritesOnly ? Colors.red : Colors.green.withOpacity(0.5),
+                      width: 2,
+                    ),
+                  ),
+                  child: IconButton(
+                    icon: Icon(
+                      _showFavoritesOnly ? Icons.favorite : Icons.favorite_border,
+                      color: _showFavoritesOnly ? Colors.white : Colors.green,
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        _showFavoritesOnly = !_showFavoritesOnly;
+                      });
+                    },
+                  ),
                 ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: Colors.green.withOpacity(0.5)),
-                ),
-                filled: true,
-                fillColor: Colors.grey[100],
-              ),
+              ],
             ),
           ),
+
+          // Active Filter Chips
+          if (_filter9Holes || _filter18Holes)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0),
+              child: Wrap(
+                spacing: 8,
+                children: [
+                  if (_filter9Holes || _filter18Holes)
+                    FilterChip(
+                      label: Text(
+                        _filter9Holes && _filter18Holes
+                            ? '9 & 18 Holes'
+                            : _filter9Holes
+                                ? '9 Holes'
+                                : '18 Holes',
+                      ),
+                      selected: true,
+                      selectedColor: Colors.green.withOpacity(0.2),
+                      checkmarkColor: Colors.green,
+                      onSelected: (bool value) {
+                        setState(() {
+                          _filter9Holes = false;
+                          _filter18Holes = false;
+                        });
+                      },
+                      deleteIcon: const Icon(Icons.close, size: 18),
+                      onDeleted: () {
+                        setState(() {
+                          _filter9Holes = false;
+                          _filter18Holes = false;
+                        });
+                      },
+                    ),
+                ],
+              ),
+            ),
+          if (_filter9Holes || _filter18Holes) const SizedBox(height: 8),
           // Courses List
           Expanded(
             child: FutureBuilder<List<Course>>(
@@ -476,79 +723,111 @@ class _CoursesScreenState extends State<CoursesScreen> {
                 }
 
                 final allCourses = snapshot.data ?? [];
-                final filteredCourses = _filterCourses(allCourses);
 
-                if (filteredCourses.isEmpty) {
-                  return Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.golf_course, size: 64, color: Colors.grey),
-                        const SizedBox(height: 16),
-                        Text(
-                          _searchQuery.isEmpty
-                              ? 'No courses found nearby'
-                              : 'No courses match your search',
-                          style: Theme.of(context).textTheme.titleLarge,
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          _searchQuery.isEmpty
-                              ? 'Try adjusting your search radius'
-                              : 'Try a different search term',
-                        ),
-                      ],
-                    ),
-                  );
-                }
+                return FutureBuilder<List<Course>>(
+                  future: _filterCourses(allCourses),
+                  builder: (context, filteredSnapshot) {
+                    if (filteredSnapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(
+                        child: CircularProgressIndicator(color: Color(0xFF0A5D2A)),
+                      );
+                    }
 
-                final displayedCourses = filteredCourses.take(_displayCount).toList();
-                final hasMore = filteredCourses.length > _displayCount;
+                    final filteredCourses = filteredSnapshot.data ?? [];
 
-                return ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: displayedCourses.length + (hasMore ? 1 : 0),
-                  itemBuilder: (context, index) {
-                    if (index == displayedCourses.length) {
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 16.0),
-                        child: Center(
-                          child: ElevatedButton.icon(
-                            onPressed: _loadMoreCourses,
-                            icon: const Icon(Icons.arrow_downward),
-                            label: Text(
-                                'Load More (${filteredCourses.length - _displayCount} remaining)'),
-                            style: ElevatedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 24, vertical: 12),
-                              foregroundColor: Colors.green,
+                    if (filteredCourses.isEmpty) {
+                      String emptyMessage;
+                      String emptySubtext;
+
+                      if (_showFavoritesOnly) {
+                        emptyMessage = 'No favorites yet';
+                        emptySubtext = 'Tap the heart icon on a course to add it to your favorites';
+                      } else if (_searchQuery.isNotEmpty) {
+                        emptyMessage = 'No courses match your search';
+                        emptySubtext = 'Try a different search term';
+                      } else {
+                        emptyMessage = 'No courses found nearby';
+                        emptySubtext = 'Try adjusting your filters';
+                      }
+
+                      return Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              _showFavoritesOnly ? Icons.favorite_border : Icons.golf_course,
+                              size: 64,
+                              color: Colors.grey,
                             ),
-                          ),
+                            const SizedBox(height: 16),
+                            Text(
+                              emptyMessage,
+                              style: Theme.of(context).textTheme.titleLarge,
+                            ),
+                            const SizedBox(height: 8),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 32),
+                              child: Text(
+                                emptySubtext,
+                                textAlign: TextAlign.center,
+                                style: TextStyle(color: Colors.grey),
+                              ),
+                            ),
+                          ],
                         ),
                       );
                     }
 
-                    final course = displayedCourses[index];
+                    final displayedCourses = filteredCourses.take(_displayCount).toList();
+                    final hasMore = filteredCourses.length > _displayCount;
 
-                    return CourseCard(
-                      type: CourseCardType.courseCard,
-                      courseName: course.courseName,
-                      courseImage: getRandomCourseImage(),
-                      imageUrl: null,
-                      holes: course.holes?.length ?? 18,
-                      par: course.totalPar ?? 72,
-                      distance: _formatAddress(course),
-                      course: course,
-                      courseLatitude: course.location.latitude,
-                      courseLongitude: course.location.longitude,
-                      onPreview: () {
-                        if (!context.mounted) return;
-                        context.push('/courses/preview', extra: course);
-                      },
-                      onPlay: () {
-                        if (!context.mounted) return;
-                        context.push('/course-details',
-                            extra: course);
+                    return ListView.builder(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: displayedCourses.length + (hasMore ? 1 : 0),
+                      itemBuilder: (context, index) {
+                        if (index == displayedCourses.length) {
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 16.0),
+                            child: Center(
+                              child: ElevatedButton.icon(
+                                onPressed: _loadMoreCourses,
+                                icon: const Icon(Icons.arrow_downward),
+                                label: Text(
+                                    'Load More (${filteredCourses.length - _displayCount} remaining)'),
+                                style: ElevatedButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 24, vertical: 12),
+                                  foregroundColor: Colors.green,
+                                ),
+                              ),
+                            ),
+                          );
+                        }
+
+                        final course = displayedCourses[index];
+
+                        return CourseCard(
+                          key: ValueKey(course.courseId),
+                          type: CourseCardType.courseCard,
+                          courseName: course.courseName,
+                          courseImage: _getCourseImage(course.courseId),
+                          imageUrl: null,
+                          holes: course.holes?.length ?? 18,
+                          par: course.totalPar ?? 72,
+                          distance: _formatAddress(course),
+                          course: course,
+                          courseLatitude: course.location.latitude,
+                          courseLongitude: course.location.longitude,
+                          onPreview: () {
+                            if (!context.mounted) return;
+                            context.push('/courses/preview', extra: course);
+                          },
+                          onPlay: () {
+                            if (!context.mounted) return;
+                            context.push('/course-details',
+                                extra: course);
+                          },
+                        );
                       },
                     );
                   },

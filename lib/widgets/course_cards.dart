@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:golf_tracker_app/models/course.dart';
 import 'package:golf_tracker_app/services/location_service.dart';
 import 'package:golf_tracker_app/services/friend_service.dart';
+import 'package:golf_tracker_app/services/favorites_service.dart';
 
 enum CourseCardType { courseScoreCard, friendCourseScoreCard, courseCard }
 
@@ -55,18 +56,35 @@ class CourseCard extends StatefulWidget {
   State<CourseCard> createState() => _CourseCardState();
 }
 
-class _CourseCardState extends State<CourseCard> {
+class _CourseCardState extends State<CourseCard> with SingleTickerProviderStateMixin {
   final LocationService _locationService = LocationService();
   final FriendService _friendService = FriendService();
+  final FavoritesService _favoritesService = FavoritesService();
   late Future<String?> _distanceFuture;
   bool _isLiked = false;
   int _likesCount = 0;
   int _commentsCount = 0;
   final TextEditingController _commentController = TextEditingController();
+  bool _isFavorite = false;
+  late AnimationController _favoriteAnimationController;
+  late Animation<double> _favoriteAnimation;
 
   @override
   void initState() {
     super.initState();
+
+    // Initialize favorite animation controller
+    _favoriteAnimationController = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
+    _favoriteAnimation = Tween<double>(begin: 1.0, end: 1.3).animate(
+      CurvedAnimation(
+        parent: _favoriteAnimationController,
+        curve: Curves.easeInOut,
+      ),
+    );
+
     if (widget.type == CourseCardType.courseCard &&
         widget.courseLatitude != null &&
         widget.courseLongitude != null) {
@@ -82,12 +100,46 @@ class _CourseCardState extends State<CourseCard> {
         widget.roundId != null) {
       _loadLikesAndComments();
     }
+
+    // Load favorite status for course cards
+    if (widget.type == CourseCardType.courseCard && widget.course != null) {
+      _loadFavoriteStatus();
+    }
   }
 
   @override
   void dispose() {
     _commentController.dispose();
+    _favoriteAnimationController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadFavoriteStatus() async {
+    if (widget.course == null) return;
+
+    final isFavorite = await _favoritesService.isFavoriteCourse(widget.course!.courseId);
+    if (mounted) {
+      setState(() {
+        _isFavorite = isFavorite;
+      });
+    }
+  }
+
+  Future<void> _toggleFavorite() async {
+    if (widget.course == null) return;
+
+    final newStatus = await _favoritesService.toggleFavorite(widget.course!.courseId);
+
+    // Animate the heart
+    _favoriteAnimationController.forward().then((_) {
+      _favoriteAnimationController.reverse();
+    });
+
+    if (mounted) {
+      setState(() {
+        _isFavorite = newStatus;
+      });
+    }
   }
 
   Future<void> _loadLikesAndComments() async {
@@ -169,7 +221,7 @@ class _CourseCardState extends State<CourseCard> {
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: Colors.grey[300],
+                  color: Colors.grey.withOpacity(0.5),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -179,7 +231,7 @@ class _CourseCardState extends State<CourseCard> {
                 padding: EdgeInsets.symmetric(horizontal: 20),
                 child: Row(
                   children: [
-                    Icon(Icons.comment, color: Colors.green),
+                    Icon(Icons.comment, color: Color(0xFF0A5D2A)),
                     SizedBox(width: 8),
                     Text(
                       'Comments',
@@ -210,18 +262,18 @@ class _CourseCardState extends State<CourseCard> {
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Icon(Icons.comment_outlined,
-                                size: 64, color: Colors.grey[400]),
+                                size: 64, color: Colors.grey.withOpacity(0.6)),
                             const SizedBox(height: 16),
                             Text(
                               'No comments yet',
                               style:
-                                  TextStyle(fontSize: 16, color: Colors.grey[600]),
+                                  TextStyle(fontSize: 16, color: Colors.grey),
                             ),
                             const SizedBox(height: 8),
                             Text(
                               'Be the first to comment!',
                               style:
-                                  TextStyle(fontSize: 14, color: Colors.grey[500]),
+                                  TextStyle(fontSize: 14, color: Colors.grey.withOpacity(0.8)),
                             ),
                           ],
                         ),
@@ -244,7 +296,7 @@ class _CourseCardState extends State<CourseCard> {
                             children: [
                               CircleAvatar(
                                 radius: 18,
-                                backgroundColor: Colors.green,
+                                backgroundColor: Color(0xFF0A5D2A),
                                 backgroundImage: profilePictureUrl != null && profilePictureUrl.isNotEmpty
                                     ? NetworkImage(profilePictureUrl)
                                     : null,
@@ -310,21 +362,21 @@ class _CourseCardState extends State<CourseCard> {
                   children: [
                     Expanded(
                       child: TextField(
-                        cursorColor: Colors.green,
+                        cursorColor: Color(0xFF0A5D2A),
                         controller: _commentController,
                         decoration: InputDecoration(
                           hintText: 'Add a comment...',
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(24),
-                            borderSide: const BorderSide(color: Colors.green),
+                            borderSide: const BorderSide(color: Color(0xFF0A5D2A)),
                           ),
                           focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(24),
-                            borderSide: const BorderSide(color: Colors.green, width: 2),
+                            borderSide: const BorderSide(color: Color(0xFF0A5D2A), width: 2),
                           ),
                           enabledBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(24),
-                            borderSide: BorderSide(color: Colors.green.withOpacity(0.5)),
+                            borderSide: BorderSide(color: Color(0xFF0A5D2A).withOpacity(0.5)),
                           ),
                           contentPadding: const EdgeInsets.symmetric(
                             horizontal: 16,
@@ -337,7 +389,7 @@ class _CourseCardState extends State<CourseCard> {
                     const SizedBox(width: 8),
                     IconButton(
                       icon: const Icon(Icons.send),
-                      color: Colors.green,
+                      color: Color(0xFF0A5D2A),
                       onPressed: () async {
                         if (_commentController.text.trim().isEmpty) return;
 
@@ -396,7 +448,7 @@ class _CourseCardState extends State<CourseCard> {
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
-              child: const Text(style: TextStyle(color: Colors.black), 'Cancel'),
+              child: const Text(style: TextStyle(color: Color(0xFF2D3E1F)), 'Cancel'),
             ),
             TextButton(
               onPressed: () => Navigator.of(context).pop(true),
@@ -465,142 +517,166 @@ class _CourseCardState extends State<CourseCard> {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
-      child: Container(
-        width: MediaQuery.of(context).size.width * 0.9,
-        decoration: BoxDecoration(
-          color: const Color(0xFFE8F1D4),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildHeader(),
-            _buildImage(),
-            _buildFooter(),
-          ],
+      child: InkWell(
+        onTap: widget.type == CourseCardType.courseCard ? widget.onPreview : null,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          width: MediaQuery.of(context).size.width * 0.9,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: Colors.grey.withOpacity(0.15),
+              width: 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.grey.withOpacity(0.08),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildHeader(),
+              _buildImage(),
+              _buildFooter(),
+            ],
+          ),
         ),
       ),
     );
   }
 
   Widget _buildHeader() {
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: widget.type == CourseCardType.courseCard
-          ? Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(widget.courseName, style: _textStyle(18, FontWeight.w700)),
-                const SizedBox(height: 4),
-                _buildDistanceRow(),
-                const SizedBox(height: 4),
-                Text('${widget.distance}', style: _textStyle(14, FontWeight.w400)),
-              ],
-            )
-          : widget.type == CourseCardType.friendCourseScoreCard
-              ? Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('${widget.friendName} Played at:',
-                        style: _textStyle(16, FontWeight.w600)),
-                    const SizedBox(height: 4),
-                    Text('${widget.courseName} - ${widget.holes} holes Par ${widget.par}',
-                        style: _textStyle(14, FontWeight.w500)),
-                  ],
-                )
-              : Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(widget.courseName, style: _textStyle(18, FontWeight.w800)),
-                        //const SizedBox(height: 4),
-                        Text('${widget.holes} holes Par ${widget.par}',
-                            style: _textStyle(15, FontWeight.w400)),
-                      ],
-                    ),
-                    IconButton(
-                      icon: Icon(Icons.delete),
-                      iconSize: 20,
-                      color: Colors.red,
-                      onPressed: _showDeleteConfirmation,
-                    )
-                  ],
-                ),
-    );
-  }
-
-  Widget _buildDistanceRow() {
-    return FutureBuilder<String?>(
-      future: _distanceFuture,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.done && snapshot.hasData && snapshot.data != null) {
-          return Row(
-            children: [
-              Icon(Icons.location_on, size: 16, color: const Color(0xFF6B8E4E)),
-              const SizedBox(width: 4),
-              Text('${snapshot.data} miles away', style: _textStyle(14, FontWeight.w400)),
-            ],
+    return widget.type == CourseCardType.courseCard
+        ? const SizedBox.shrink() // No header for course cards
+        : Padding(
+            padding: const EdgeInsets.all(16),
+            child: widget.type == CourseCardType.friendCourseScoreCard
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('${widget.friendName} Played at:',
+                          style: _textStyle(16, FontWeight.w600)),
+                      const SizedBox(height: 4),
+                      Text('${widget.courseName} - ${widget.holes} holes Par ${widget.par}',
+                          style: _textStyle(14, FontWeight.w500)),
+                    ],
+                  )
+                : Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(widget.courseName, style: _textStyle(18, FontWeight.w800)),
+                          Text('${widget.holes} holes Par ${widget.par}',
+                              style: _textStyle(15, FontWeight.w400)),
+                        ],
+                      ),
+                      IconButton(
+                        icon: Icon(Icons.delete),
+                        iconSize: 20,
+                        color: Colors.red,
+                        onPressed: _showDeleteConfirmation,
+                      )
+                    ],
+                  ),
           );
-        }
-        return const SizedBox.shrink();
-      },
-    );
   }
 
   Widget _buildImage() {
     return LayoutBuilder(
       builder: (_, constraints) {
         return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: widget.imageUrl != null && widget.imageUrl!.isNotEmpty
-                ? Image.network(
-                    widget.imageUrl!,
-                    height: constraints.maxWidth * 0.6,
-                    width: constraints.maxWidth,
-                    fit: BoxFit.cover,
-                    loadingBuilder: (context, child, loadingProgress) {
-                      if (loadingProgress == null) return child;
-                      return Container(
+          padding: const EdgeInsets.fromLTRB(10, 10, 10, 0),
+          child: Stack(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: widget.imageUrl != null && widget.imageUrl!.isNotEmpty
+                    ? Image.network(
+                        widget.imageUrl!,
                         height: constraints.maxWidth * 0.6,
                         width: constraints.maxWidth,
-                        color: Colors.grey[300],
-                        child: Center(
-                          child: CircularProgressIndicator(
-                            value: loadingProgress.expectedTotalBytes != null
-                                ? loadingProgress.cumulativeBytesLoaded /
-                                    loadingProgress.expectedTotalBytes!
-                                : null,
-                          ),
+                        fit: BoxFit.cover,
+                        loadingBuilder: (context, child, loadingProgress) {
+                          if (loadingProgress == null) return child;
+                          return Container(
+                            height: constraints.maxWidth * 0.6,
+                            width: constraints.maxWidth,
+                            color: Colors.grey[100],
+                            child: Center(
+                              child: CircularProgressIndicator(
+                                value: loadingProgress.expectedTotalBytes != null
+                                    ? loadingProgress.cumulativeBytesLoaded /
+                                        loadingProgress.expectedTotalBytes!
+                                    : null,
+                              ),
+                            ),
+                          );
+                        },
+                        errorBuilder: (context, error, stackTrace) {
+                          return Container(
+                            height: constraints.maxWidth * 0.6,
+                            width: constraints.maxWidth,
+                            color: Colors.grey[100],
+                            child: Icon(Icons.golf_course, size: 50, color: Colors.grey),
+                          );
+                        },
+                      )
+                    : Image.asset(
+                        widget.courseImage,
+                        height: constraints.maxWidth * 0.6,
+                        width: constraints.maxWidth,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          return Container(
+                            height: constraints.maxWidth * 0.6,
+                            width: constraints.maxWidth,
+                            color: Colors.grey[100],
+                            child: Icon(Icons.golf_course, size: 50, color: Colors.grey),
+                          );
+                        },
+                      ),
+              ),
+              // Heart icon for favorites (only for course cards)
+              if (widget.type == CourseCardType.courseCard)
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: ScaleTransition(
+                    scale: _favoriteAnimation,
+                    child: GestureDetector(
+                      onTap: () {
+                        _toggleFavorite();
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.95),
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Color(0xFF2D3E1F).withOpacity(0.1),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
                         ),
-                      );
-                    },
-                    errorBuilder: (context, error, stackTrace) {
-                      return Container(
-                        height: constraints.maxWidth * 0.6,
-                        width: constraints.maxWidth,
-                        color: Colors.grey[300],
-                        child: Icon(Icons.golf_course, size: 50, color: Colors.grey[600]),
-                      );
-                    },
-                  )
-                : Image.asset(
-                    widget.courseImage,
-                    height: constraints.maxWidth * 0.6,
-                    width: constraints.maxWidth,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) {
-                      return Container(
-                        height: constraints.maxWidth * 0.6,
-                        width: constraints.maxWidth,
-                        color: Colors.grey[300],
-                        child: Icon(Icons.golf_course, size: 50, color: Colors.grey[600]),
-                      );
-                    },
+                        child: Icon(
+                          _isFavorite ? Icons.favorite : Icons.favorite_border,
+                          color: _isFavorite ? Colors.red.shade600 : Colors.grey,
+                          size: 24,
+                        ),
+                      ),
+                    ),
                   ),
+                ),
+            ],
           ),
         );
       },
@@ -614,15 +690,36 @@ class _CourseCardState extends State<CourseCard> {
           ? Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Par ${widget.par}', style: _textStyle(16, FontWeight.w600)),
-                Text('${widget.holes} holes', style: _textStyle(14, FontWeight.w400)),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(child: _buildButton('Preview', isOutlined: true)),
-                    const SizedBox(width: 12),
-                    Expanded(child: _buildButton('Play')),
-                  ],
+                // Stats row: "18 Holes • Par 72 • 2.3 Miles"
+                FutureBuilder<String?>(
+                  future: _distanceFuture,
+                  builder: (context, snapshot) {
+                    final distance = snapshot.data ?? '';
+                    final distanceText = distance.isNotEmpty ? ' • $distance miles' : '';
+
+                    return Text(
+                      '${widget.holes} Holes • Par ${widget.par}$distanceText',
+                      style: _textStyle(13, FontWeight.w500).copyWith(
+                        color: Colors.grey,
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 8),
+                // Course name (biggest and bold)
+                Text(
+                  widget.courseName,
+                  style: _textStyle(20, FontWeight.w700),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 4),
+                // Location (city, state)
+                Text(
+                  '${widget.distance}',
+                  style: _textStyle(14, FontWeight.w400).copyWith(
+                    color: Colors.grey,
+                  ),
                 ),
               ],
             )
@@ -642,45 +739,53 @@ class _CourseCardState extends State<CourseCard> {
                       children: [
                         InkWell(
                           onTap: _toggleLike,
-                          child: Row(
-                            children: [
-                              Icon(
-                                _isLiked ? Icons.favorite : Icons.favorite_border,
-                                color: _isLiked ? Colors.red : Colors.grey[600],
-                                size: 24,
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                '$_likesCount',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  color: Colors.grey[700],
-                                  fontWeight: FontWeight.w500,
+                          borderRadius: BorderRadius.circular(8),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  _isLiked ? Icons.favorite : Icons.favorite_border,
+                                  color: _isLiked ? Colors.red.shade600 : Colors.grey,
+                                  size: 22,
                                 ),
-                              ),
-                            ],
+                                const SizedBox(width: 6),
+                                Text(
+                                  '$_likesCount',
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    color: Color(0xFF2D3E1F),
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
-                        const SizedBox(width: 24),
+                        const SizedBox(width: 16),
                         InkWell(
                           onTap: _showComments,
-                          child: Row(
-                            children: [
-                              Icon(
-                                Icons.comment_outlined,
-                                color: Colors.grey[600],
-                                size: 24,
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                '$_commentsCount',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  color: Colors.grey[700],
-                                  fontWeight: FontWeight.w500,
+                          borderRadius: BorderRadius.circular(8),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.comment_outlined,
+                                  color: Colors.grey,
+                                  size: 22,
                                 ),
-                              ),
-                            ],
+                                const SizedBox(width: 6),
+                                Text(
+                                  '$_commentsCount',
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    color: Color(0xFF2D3E1F),
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ],
@@ -709,37 +814,7 @@ class _CourseCardState extends State<CourseCard> {
     );
   }
 
-  Widget _buildButton(String text, {bool isOutlined = false}) {
-    VoidCallback? onPressed;
-
-    if (text == 'Preview') {
-      onPressed = widget.onPreview;
-    } else if (text == 'Play') {
-      onPressed = widget.onPlay;
-    }
-
-    return isOutlined
-        ? OutlinedButton(
-            onPressed: onPressed,
-            style: OutlinedButton.styleFrom(
-              foregroundColor: const Color(0xFF6B8E4E),
-              side: const BorderSide(color: Color(0xFF6B8E4E)),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-            ),
-            child: Text(text),
-          )
-        : ElevatedButton(
-            onPressed: onPressed,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF6B8E4E),
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-            ),
-            child: Text(text),
-          );
-  }
-
   TextStyle _textStyle(double size, FontWeight weight) {
-    return TextStyle(fontSize: size, fontWeight: weight, color: const Color(0xFF2D3E1F));
+    return TextStyle(fontSize: size, fontWeight: weight, color: Color(0xFF2D3E1F));
   }
 }
